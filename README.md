@@ -1,205 +1,226 @@
-# Ollama CLI Client
+# Ollama Web Chat
 
-A TypeScript CLI client for the Ollama API with streaming support, built for Bun runtime.
+A modern, full-featured web application for chatting with Ollama models. Built with Next.js, TypeScript, and Tailwind CSS.
 
 ## Features
 
-- 🚀 **Streaming responses** - Real-time token streaming from Ollama
-- 💬 **Interactive chat mode** - Continuous conversation with history
-- 🎯 **Flexible options** - System prompts, temperature control, custom formats
+- 🚀 **Real-time streaming** - Live token streaming from Ollama
+- 💬 **Persistent conversations** - Chat history saved to database
+- 🔐 **User authentication** - Session management with NextAuth.js
+- 🎯 **Model switching** - Dynamic model selection
 - 📊 **Performance stats** - Token count and generation speed
-- 🔄 **Conversation history** - Maintains context across messages
-- 🎨 **JSON formatting** - Support for structured outputs
+- 🎨 **Modern UI** - Responsive design with dark/light mode support
+- 🔄 **Conversation management** - Create, edit, and delete conversations
+- ⚙️ **Advanced settings** - Temperature control, system prompts
+
+## Prerequisites
+
+- [Bun](https://bun.sh) runtime
+- [Ollama](https://ollama.ai) server running locally
+- Node.js 18+ (for compatibility)
 
 ## Installation
 
-Make sure you have [Bun](https://bun.sh) installed, then clone this repository:
+1. **Clone and navigate to the project:**
+   ```bash
+   git clone <repository-url>
+   cd ollama-client-ts
+   ```
 
-```bash
-git clone <repository-url>
-cd ollama-client-ts
-```
+2. **Install dependencies:**
+   ```bash
+   bun install
+   ```
+
+3. **Set up the database:**
+   ```bash
+   bun run prisma generate
+   bun run prisma db push
+   ```
+
+4. **Configure environment variables:**
+   Copy `.env.local` and update if needed:
+   ```bash
+   # Database
+   DATABASE_URL="file:./dev.db"
+
+   # NextAuth.js
+   NEXTAUTH_URL="http://localhost:3000"
+   NEXTAUTH_SECRET="your-secret-key-here-change-in-production"
+
+   # Ollama
+   OLLAMA_BASE_URL="http://localhost:11434"
+   NEXT_PUBLIC_OLLAMA_BASE_URL="http://localhost:11434"
+   ```
 
 ## Usage
 
-### Basic Chat
+1. **Start Ollama server:**
+   ```bash
+   ollama serve
+   ```
 
-```bash
-# Simple question
-bun run index.ts "Hello, how are you?"
+2. **Pull some models (if you haven't already):**
+   ```bash
+   ollama pull llama3.2
+   ollama pull codellama
+   ```
 
-# With specific model
-bun run index.ts -m llama3.2 "Explain quantum computing"
+3. **Start the development server:**
+   ```bash
+   bun run dev
+   ```
 
-# With system prompt
-bun run index.ts -s "You are a helpful coding assistant" "How do I write a function in TypeScript?"
+4. **Open your browser:**
+   Navigate to [http://localhost:3000](http://localhost:3000)
+
+5. **Sign in:**
+   Use the guest credentials:
+   - Email: `guest@example.com`
+   - Password: `guest`
+
+## Project Structure
+
+```
+ollama-client-ts/
+├── src/
+│   ├── app/                    # Next.js app router
+│   │   ├── api/               # API routes
+│   │   │   ├── auth/          # NextAuth.js
+│   │   │   ├── chat/          # Chat streaming
+│   │   │   ├── conversations/ # Conversation CRUD
+│   │   │   └── models/        # Ollama models
+│   │   ├── auth/              # Authentication pages
+│   │   └── globals.css        # Global styles
+│   ├── components/            # React components
+│   │   ├── chat/              # Chat interface
+│   │   ├── layout/            # Layout components
+│   │   ├── providers/         # Context providers
+│   │   └── ui/                # Reusable UI components
+│   ├── lib/                   # Utility libraries
+│   │   ├── auth.ts            # NextAuth configuration
+│   │   ├── db.ts              # Prisma client
+│   │   ├── ollama-client.ts   # Ollama API client
+│   │   └── utils.ts           # Helper functions
+│   ├── stores/                # Zustand state management
+│   └── types/                 # TypeScript type definitions
+├── prisma/                    # Database schema
+└── public/                    # Static assets
 ```
 
-### Interactive Mode
+## Key Features
 
-```bash
-# Start interactive chat
-bun run index.ts -i
+### Chat Interface
+- Real-time message streaming
+- Message history with timestamps
+- User and assistant message bubbles
+- Typing indicators during streaming
 
-# Interactive with specific model
-bun run index.ts -i -m codellama
+### Conversation Management
+- Create new conversations
+- Browse conversation history
+- Delete conversations
+- Auto-generated conversation titles
 
-# Or use the npm script
-bun run chat
-```
+### Model Integration
+- Dynamic model listing from Ollama
+- Model switching per conversation
+- Temperature and system prompt controls
+- Performance statistics display
 
-### Advanced Options
+### Database Schema
+- Users and authentication
+- Conversations with settings
+- Messages with metadata
+- User preferences
 
-```bash
-# JSON output format
-bun run index.ts --format json "List 3 programming languages in JSON format"
+## API Endpoints
 
-# Custom temperature
-bun run index.ts -t 0.7 "Write a creative story"
-
-# Disable streaming (get complete response at once)
-bun run index.ts --no-stream "What is TypeScript?"
-
-# Don't keep conversation history
-bun run index.ts --no-history "Independent question"
-
-# Custom Ollama server URL
-bun run index.ts -u http://192.168.1.100:11434 "Hello"
-```
-
-### Utility Commands
-
-```bash
-# List available models
-bun run index.ts --list-models
-
-# Show help
-bun run index.ts --help
-```
-
-## CLI Options
-
-| Option | Short | Description | Default |
-|--------|-------|-------------|---------|
-| `--model` | `-m` | Model to use | `llama3.2` |
-| `--system` | `-s` | System prompt | - |
-| `--temperature` | `-t` | Temperature (0.0-1.0) | - |
-| `--url` | `-u` | Ollama server URL | `http://localhost:11434` |
-| `--no-stream` | - | Disable streaming | `false` |
-| `--no-history` | - | Don't keep conversation history | `false` |
-| `--format` | - | Response format (json, or JSON schema) | - |
-| `--interactive` | `-i` | Interactive mode | `false` |
-| `--list-models` | - | List available models | `false` |
-| `--help` | `-h` | Show help | `false` |
-
-## Interactive Mode Commands
-
-When in interactive mode, you can use these special commands:
-
-- `exit` - Quit the interactive session
-- `clear` - Clear conversation history
-- `models` - List available models
-
-## Examples
-
-### Basic Usage
-```bash
-# Ask a simple question
-bun run index.ts "What is the capital of France?"
-
-# Use a specific model
-bun run index.ts -m codellama "Write a Python function to calculate fibonacci"
-```
-
-### System Prompts
-```bash
-# Set a system prompt for role-playing
-bun run index.ts -s "You are a pirate captain" "Tell me about your adventures"
-
-# Technical assistant
-bun run index.ts -s "You are a senior software engineer" "Explain microservices architecture"
-```
-
-### JSON Output
-```bash
-# Request structured JSON response
-bun run index.ts --format json "List the top 5 programming languages with their use cases in JSON format"
-
-# With JSON schema for strict formatting
-bun run index.ts --format '{"type":"object","properties":{"languages":{"type":"array","items":{"type":"string"}}}}' "List 3 programming languages"
-```
-
-### Interactive Session Example
-```bash
-$ bun run index.ts -i
-🤖 Interactive chat with llama3.2
-Type 'exit' to quit, 'clear' to clear history, 'models' to list models
-
-You: Hello! How are you?
-Assistant: Hello! I'm doing well, thank you for asking. I'm here and ready to help you with any questions or tasks you might have. How are you doing today?
-
-You: Can you help me with TypeScript?
-Assistant: Absolutely! I'd be happy to help you with TypeScript. TypeScript is a powerful superset of JavaScript that adds static typing...
-
-You: clear
-Conversation history cleared.
-
-You: exit
-Goodbye! 👋
-```
-
-## API Compatibility
-
-This CLI supports the Ollama Chat API (`/api/chat`) with the following features:
-
-- ✅ Streaming responses
-- ✅ Non-streaming responses  
-- ✅ System prompts
-- ✅ Conversation history
-- ✅ Temperature control
-- ✅ JSON formatting
-- ✅ Custom model selection
-- ✅ Performance statistics
-
-## Requirements
-
-- [Bun](https://bun.sh) runtime
-- Ollama server running (default: `http://localhost:11434`)
-- TypeScript 5+
+- `GET /api/conversations` - List user conversations
+- `POST /api/conversations` - Create new conversation
+- `GET /api/conversations/[id]` - Get conversation with messages
+- `PUT /api/conversations/[id]` - Update conversation
+- `DELETE /api/conversations/[id]` - Delete conversation
+- `POST /api/chat` - Send message and stream response
+- `GET /api/models` - List available Ollama models
 
 ## Development
 
+### Database Changes
 ```bash
-# Run in development mode with auto-reload
-bun run dev
-
-# Start interactive chat
-bun run chat
-
-# Run with custom arguments
-bun run start -- -m llama3.2 "Your message here"
+# After modifying schema.prisma
+bun run prisma generate
+bun run prisma db push
 ```
 
-## Error Handling
+### Adding New Components
+```bash
+# Create new UI components in src/components/ui/
+# Follow the existing patterns for consistency
+```
 
-The CLI includes comprehensive error handling for:
+### Environment Setup
+- Development: SQLite database
+- Production: Can be upgraded to PostgreSQL
+- Authentication: Currently demo credentials, extend for production
 
-- Network connection issues
-- Invalid model names
-- Malformed JSON responses
-- Server errors
-- Invalid command line arguments
+## Production Deployment
 
-## Performance
+1. **Update environment variables:**
+   - Set secure `NEXTAUTH_SECRET`
+   - Configure production database URL
+   - Set proper `NEXTAUTH_URL`
 
-The streaming implementation provides real-time token output with performance statistics including:
+2. **Database migration:**
+   ```bash
+   # For PostgreSQL in production
+   bun run prisma migrate deploy
+   ```
 
-- Token count
-- Tokens per second
-- Total duration
-- Load duration
-- Evaluation duration
+3. **Build and start:**
+   ```bash
+   bun run build
+   bun run start
+   ```
+
+## Troubleshooting
+
+### Common Issues
+
+1. **Ollama connection failed:**
+   - Ensure Ollama is running: `ollama serve`
+   - Check the URL in environment variables
+   - Verify models are pulled: `ollama list`
+
+2. **Database errors:**
+   - Regenerate Prisma client: `bun run prisma generate`
+   - Reset database: `bun run prisma db push --force-reset`
+
+3. **Authentication issues:**
+   - Check `NEXTAUTH_SECRET` is set
+   - Verify `NEXTAUTH_URL` matches your domain
+
+### Performance Tips
+
+- Use streaming for better perceived performance
+- Implement conversation pagination for large histories
+- Consider Redis for session storage in production
+- Optimize database queries with proper indexing
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Test thoroughly
+5. Submit a pull request
 
 ## License
 
 MIT License - see LICENSE file for details.
+
+## Acknowledgments
+
+- Built on the excellent [Ollama](https://ollama.ai) project
+- UI components inspired by [shadcn/ui](https://ui.shadcn.com)
+- Authentication powered by [NextAuth.js](https://next-auth.js.org)
