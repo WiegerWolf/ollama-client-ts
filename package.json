@@ -1,0 +1,32 @@
+{
+  "name": "ollama-client-ts",
+  "version": "1.0.0",
+  "description": "A TypeScript CLI client for Ollama API with streaming support",
+  "main": "index.ts",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "bun run index.ts",
+    "chat": "bun run index.ts -i",
+    "dev": "bun --watch index.ts"
+  },
+  "bin": {
+    "ollama-cli": "./index.ts"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "keywords": [
+    "ollama",
+    "cli",
+    "typescript",
+    "bun",
+    "ai",
+    "chat",
+    "streaming"
+  ]
+}
