@@ -4,7 +4,6 @@ import CredentialsProvider from "next-auth/providers/credentials"
 import { prisma } from "./db"
 
 export const authOptions: NextAuthOptions = {
-  adapter: PrismaAdapter(prisma),
   providers: [
     CredentialsProvider({
       name: "credentials",
@@ -27,6 +26,16 @@ export const authOptions: NextAuthOptions = {
   ],
   session: {
     strategy: "jwt",
+  },
+  jwt: {
+    encode: async ({ secret, token }) => {
+      const jwt = require('jsonwebtoken')
+      return jwt.sign(token, secret, { algorithm: 'HS256' })
+    },
+    decode: async ({ secret, token }) => {
+      const jwt = require('jsonwebtoken')
+      return jwt.verify(token, secret, { algorithms: ['HS256'] })
+    },
   },
   callbacks: {
     session: async ({ session, token }) => {
