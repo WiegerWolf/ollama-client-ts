@@ -16,12 +16,6 @@ export async function GET(request: NextRequest) {
         userId: session.user.id
       },
       include: {
-        messages: {
-          orderBy: {
-            createdAt: 'asc'
-          },
-          take: 1 // Just get the first message for preview
-        },
         _count: {
           select: {
             messages: true
@@ -51,18 +45,35 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const body = await request.json()
+    let body
+    try {
+      const requestText = await request.text()
+      if (!requestText.trim()) {
+        return NextResponse.json(
+          { error: 'Invalid request body' },
+          { status: 400 }
+        )
+      }
+      body = JSON.parse(requestText)
+    } catch (parseError) {
+      return NextResponse.json(
+        { error: 'Invalid request body' },
+        { status: 400 }
+      )
+    }
+
     const { title, model, settings, firstMessage } = body
 
-    if (!model) {
+    // Validate title length if provided
+    if (title && title.length > 500) {
       return NextResponse.json(
-        { error: 'Model is required' },
+        { error: 'Title too long' },
         { status: 400 }
       )
     }
 
     // Generate title from first message if provided, otherwise use default
-    let conversationTitle = title || 'New Conversation'
+    let conversationTitle = title ? title.trim() : 'New Conversation'
     if (firstMessage && firstMessage.trim()) {
       conversationTitle = generateConversationTitle(firstMessage)
     }
@@ -71,13 +82,13 @@ export async function POST(request: NextRequest) {
       data: {
         userId: session.user.id,
         title: conversationTitle,
-        model,
-        currentModel: model, // Set currentModel to the initial model
-        settings: settings ? JSON.stringify(settings) : null
+        model: model || 'llama3.2',
+        currentModel: model || 'llama3.2', // Set currentModel to the initial model
+        ...(settings && { settings: JSON.stringify(settings) })
       }
     })
 
-    return NextResponse.json(conversation)
+    return NextResponse.json(conversation, { status: 201 })
   } catch (error) {
     console.error('Error creating conversation:', error)
     return NextResponse.json(

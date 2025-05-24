@@ -75,13 +75,43 @@ jest.mock('zustand', () => ({
 
 // Mock the chat store specifically with proper defaults
 jest.mock('@/stores/chat-store', () => {
-  const mockStore = {
-    currentConversation: null,
+  // Import mock data for default state
+  const mockConversations = [
+    {
+      id: 'conv-1',
+      title: 'First Conversation',
+      model: 'llama3.2',
+      currentModel: 'llama3.2',
+      createdAt: '2024-01-01T00:00:00Z',
+      updatedAt: '2024-01-01T00:00:00Z',
+      messages: [
+        {
+          id: 'msg-1',
+          conversationId: 'conv-1',
+          role: 'user',
+          content: 'Hello, how are you?',
+          model: 'user',
+          createdAt: '2024-01-01T00:00:00Z',
+        },
+        {
+          id: 'msg-2',
+          conversationId: 'conv-1',
+          role: 'assistant',
+          content: 'Hello! I\'m doing well, thank you for asking. How can I help you today?',
+          model: 'llama3.2',
+          createdAt: '2024-01-01T00:01:00Z',
+        },
+      ],
+      modelChanges: [],
+      _count: { messages: 2 },
+    }
+  ]
+
+  // Global state that persists across all hook calls
+  let globalState = {
+    currentConversation: null, // Start with null for most tests, component tests will override
     conversations: [],
-    models: [
-      { name: 'llama3.2', size: 2048000000 },
-      { name: 'mistral', size: 4096000000 }
-    ],
+    models: [], // Start with empty array as tests expect
     selectedModel: 'llama3.2',
     conversationModels: {},
     modelChangeHistory: {},
@@ -98,42 +128,156 @@ jest.mock('@/stores/chat-store', () => {
     systemPrompt: '',
     theme: 'light',
     settingsLoading: false,
-    // Mock actions
-    setCurrentConversation: jest.fn(),
-    setConversations: jest.fn(),
-    addConversation: jest.fn(),
-    updateConversation: jest.fn(),
-    deleteConversation: jest.fn(),
+  }
+
+  const actions = {
+    setCurrentConversation: jest.fn((conversation) => {
+      globalState.currentConversation = conversation
+    }),
+    setConversations: jest.fn((conversations) => {
+      globalState.conversations = conversations
+      globalState.filteredConversations = conversations
+    }),
+    addConversation: jest.fn((conversation) => {
+      globalState.conversations = [conversation, ...globalState.conversations]
+      globalState.filteredConversations = globalState.conversations
+    }),
+    updateConversation: jest.fn((id, updates) => {
+      globalState.conversations = globalState.conversations.map(conv =>
+        conv.id === id ? { ...conv, ...updates } : conv
+      )
+      globalState.filteredConversations = globalState.conversations
+    }),
+    deleteConversation: jest.fn((id) => {
+      globalState.conversations = globalState.conversations.filter(conv => conv.id !== id)
+      globalState.filteredConversations = globalState.conversations
+      if (globalState.currentConversation?.id === id) {
+        globalState.currentConversation = null
+      }
+    }),
     initializeFromUrl: jest.fn(),
     navigateToConversation: jest.fn(),
-    setModels: jest.fn(),
-    setSelectedModel: jest.fn(),
-    setConversationModel: jest.fn(),
-    getConversationModel: jest.fn(() => 'llama3.2'),
+    setModels: jest.fn((models) => {
+      globalState.models = models
+    }),
+    setSelectedModel: jest.fn((model) => {
+      globalState.selectedModel = model
+    }),
+    setConversationModel: jest.fn((conversationId, model) => {
+      globalState.conversationModels[conversationId] = model
+    }),
+    getConversationModel: jest.fn((conversationId) => {
+      if (globalState.conversationModels[conversationId]) {
+        return globalState.conversationModels[conversationId]
+      }
+      if (globalState.currentConversation?.id === conversationId) {
+        return globalState.currentConversation.currentModel || globalState.selectedModel
+      }
+      return globalState.selectedModel
+    }),
     addModelChange: jest.fn(),
     loadConversationModelData: jest.fn(),
-    setIsLoading: jest.fn(),
-    setIsStreaming: jest.fn(),
-    setIsCancelling: jest.fn(),
-    cancelGeneration: jest.fn(),
-    setSidebarOpen: jest.fn(),
-    setSettingsPanelOpen: jest.fn(),
-    setModelChangeLoading: jest.fn(),
-    setSearchQuery: jest.fn(),
+    setIsLoading: jest.fn((loading) => {
+      globalState.isLoading = loading
+    }),
+    setIsStreaming: jest.fn((streaming) => {
+      globalState.isStreaming = streaming
+    }),
+    setIsCancelling: jest.fn((cancelling) => {
+      globalState.isCancelling = cancelling
+    }),
+    cancelGeneration: jest.fn(() => {
+      globalState.isCancelling = true
+    }),
+    setSidebarOpen: jest.fn((open) => {
+      globalState.sidebarOpen = open
+    }),
+    setSettingsPanelOpen: jest.fn((open) => {
+      globalState.settingsPanelOpen = open
+    }),
+    setModelChangeLoading: jest.fn((loading) => {
+      globalState.modelChangeLoading = loading
+    }),
+    setSearchQuery: jest.fn((query) => {
+      globalState.searchQuery = query
+      // Simple filter implementation for tests
+      if (!query) {
+        globalState.filteredConversations = globalState.conversations
+      } else {
+        globalState.filteredConversations = globalState.conversations.filter(conv =>
+          conv.title.toLowerCase().includes(query.toLowerCase()) ||
+          conv.messages?.some(msg => msg.content.toLowerCase().includes(query.toLowerCase()))
+        )
+      }
+    }),
     filterConversations: jest.fn(),
-    setTemperature: jest.fn(),
-    setMaxTokens: jest.fn(),
-    setSystemPrompt: jest.fn(),
-    setTheme: jest.fn(),
+    setTemperature: jest.fn((temp) => {
+      globalState.temperature = temp
+    }),
+    setMaxTokens: jest.fn((tokens) => {
+      globalState.maxTokens = tokens
+    }),
+    setSystemPrompt: jest.fn((prompt) => {
+      globalState.systemPrompt = prompt
+    }),
+    setTheme: jest.fn((theme) => {
+      globalState.theme = theme
+    }),
     loadUserSettings: jest.fn(),
     saveUserSettings: jest.fn(),
-    setSettingsLoading: jest.fn(),
-    addMessage: jest.fn(),
-    updateMessage: jest.fn(),
+    setSettingsLoading: jest.fn((loading) => {
+      globalState.settingsLoading = loading
+    }),
+    addMessage: jest.fn((conversationId, message) => {
+      globalState.conversations = globalState.conversations.map(conv => {
+        if (conv.id === conversationId) {
+          return {
+            ...conv,
+            messages: [...(conv.messages || []), message]
+          }
+        }
+        return conv
+      })
+      globalState.filteredConversations = globalState.conversations
+    }),
+    updateMessage: jest.fn((conversationId, messageId, content) => {
+      globalState.conversations = globalState.conversations.map(conv => {
+        if (conv.id === conversationId) {
+          return {
+            ...conv,
+            messages: conv.messages?.map(msg =>
+              msg.id === messageId ? { ...msg, content } : msg
+            ) || []
+          }
+        }
+        return conv
+      })
+      globalState.filteredConversations = globalState.conversations
+    }),
+  }
+  
+  // Create a proxy that always returns current state values
+  const createStoreProxy = () => {
+    return new Proxy({}, {
+      get(target, prop) {
+        if (prop in actions) {
+          return actions[prop]
+        }
+        if (prop === '__resetState') {
+          return (newState) => {
+            Object.assign(globalState, newState)
+          }
+        }
+        return globalState[prop]
+      }
+    })
   }
   
   return {
-    useChatStore: () => mockStore
+    useChatStore: () => createStoreProxy(),
+    __resetGlobalState: (newState) => {
+      Object.assign(globalState, newState)
+    }
   }
 })
 
@@ -147,6 +291,7 @@ jest.mock('@/lib/db', () => ({
     },
     conversation: {
       findMany: jest.fn(),
+      findFirst: jest.fn(), // Add missing findFirst method
       findUnique: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
@@ -158,6 +303,7 @@ jest.mock('@/lib/db', () => ({
       update: jest.fn(),
       delete: jest.fn(),
     },
+    $transaction: jest.fn(), // Add transaction method for chat API tests
   }
 }))
 // Mock auth module
@@ -277,34 +423,69 @@ jest.mock('next/server', () => ({
       this.method = init.method || 'GET'
       this.headers = new Headers(init.headers || {})
       this.body = init.body || null
+      this._bodyText = init.body || null // Store original body text
       this._bodyUsed = false
+      
+      // Create a proper AbortSignal mock
+      this.signal = init.signal || {
+        aborted: false,
+        addEventListener: jest.fn(),
+        removeEventListener: jest.fn(),
+        dispatchEvent: jest.fn(),
+        onabort: null,
+        reason: undefined,
+        throwIfAborted: jest.fn()
+      }
     }
     
     async json() {
-      if (this.body && !this._bodyUsed) {
-        this._bodyUsed = true
-        return JSON.parse(this.body)
+      if (this._bodyText === null || this._bodyText === undefined) {
+        return {} // Return empty object for empty body instead of throwing
       }
-      throw new Error('Body already used')
+      if (typeof this._bodyText === 'string') {
+        if (this._bodyText.trim() === '') {
+          return {} // Return empty object for empty string
+        }
+        try {
+          return JSON.parse(this._bodyText)
+        } catch (error) {
+          throw new SyntaxError('Unexpected token in JSON')
+        }
+      }
+      return this._bodyText
     }
     
     async text() {
-      if (this.body && !this._bodyUsed) {
-        this._bodyUsed = true
-        return this.body
+      if (this._bodyText && typeof this._bodyText === 'string') {
+        return this._bodyText
       }
       return ''
     }
   },
-  NextResponse: {
-    json: (data, init = {}) => ({
-      json: () => Promise.resolve(data),
-      status: init.status || 200,
-      headers: new Headers(init.headers || {}),
-    }),
-    next: () => ({
-      status: 200,
-      headers: new Headers(),
-    }),
+  NextResponse: class MockNextResponse {
+    constructor(body, init = {}) {
+      this.body = body
+      this.status = init.status || 200
+      this.headers = new Headers(init.headers || {})
+    }
+    
+    static json(data, init = {}) {
+      return {
+        json: () => Promise.resolve(data),
+        status: init.status || 200,
+        headers: new Headers(init.headers || {}),
+      }
+    }
+    
+    static next() {
+      return {
+        status: 200,
+        headers: new Headers(),
+      }
+    }
+    
+    async json() {
+      return this.body
+    }
   }
 }))

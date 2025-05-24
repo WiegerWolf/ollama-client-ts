@@ -56,7 +56,13 @@ export function ChatInterface() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
-    if (!input.trim() || !currentConversation || isStreaming) return
+    if (!input.trim() || isStreaming) return
+
+    // If no current conversation, create one first
+    if (!currentConversation) {
+      await createNewConversation()
+      return
+    }
 
     const userMessage = input.trim()
     setInput("")
@@ -199,23 +205,34 @@ export function ChatInterface() {
     }
   }, [])
 
-  if (!currentConversation) {
-    return (
-      <div className="flex-1 flex items-center justify-center bg-bg-primary">
-        <div className="text-center max-w-[800px] mx-auto px-2xl">
-          <div className="bg-bg-secondary rounded-full p-4xl mb-3xl mx-auto w-fit">
-            <Bot className="h-12 w-12 text-text-tertiary mx-auto" />
-          </div>
-          <h2 className="text-display-medium text-text-primary mb-lg">
-            Welcome to Ollama Chat
-          </h2>
-          <p className="text-body-large text-text-secondary">
-            Select a conversation or create a new one to start chatting with AI models
-          </p>
-        </div>
-      </div>
-    )
+  const createNewConversation = async () => {
+    try {
+      const response = await fetch('/api/conversations', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          title: 'New Conversation',
+          model: selectedModel,
+        }),
+      })
+
+      if (response.ok) {
+        const newConversation = await response.json()
+        // The store should automatically update, and we can retry the submit
+        setTimeout(() => {
+          if (input.trim()) {
+            handleSubmit(new Event('submit') as any)
+          }
+        }, 100)
+      }
+    } catch (error) {
+      console.error('Error creating conversation:', error)
+    }
   }
+
+  // Always show the chat interface, even without a conversation
 
   return (
     <div className="flex-1 flex flex-col bg-bg-primary h-full">
@@ -224,14 +241,18 @@ export function ChatInterface() {
         <div className="max-w-[800px] mx-auto flex items-center justify-between">
           <div className="flex items-center space-md">
             <h1 className="text-heading-medium text-text-primary font-semibold">
-              {currentConversation.title}
+              {currentConversation?.title || 'Chat Interface'}
             </h1>
           </div>
           <div className="flex items-center space-md">
             <span className="text-body-small text-text-secondary">Model:</span>
-            <ConversationModelSelector
-              conversationId={currentConversation.id}
-            />
+            {currentConversation ? (
+              <ConversationModelSelector
+                conversationId={currentConversation.id}
+              />
+            ) : (
+              <span className="text-body-small text-text-primary">{selectedModel}</span>
+            )}
           </div>
         </div>
       </div>
@@ -239,30 +260,46 @@ export function ChatInterface() {
       {/* Messages Container */}
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-[800px] mx-auto px-2xl py-lg">
-          <div className="space-y-lg">
-            {currentConversation.messages.map((message) => (
-              <MessageBubble
-                key={message.id}
-                message={message}
-                conversationId={currentConversation.id}
-              />
-            ))}
-            
-            {/* Streaming message */}
-            {streamingMessage && (
-              <MessageBubble
-                message={{
-                  id: streamingMessageId || 'streaming',
-                  role: 'assistant',
-                  content: streamingMessage,
-                  createdAt: new Date().toISOString(),
-                  model: getConversationModel(currentConversation.id)
-                }}
-                conversationId={currentConversation.id}
-                isStreaming={true}
-              />
-            )}
-          </div>
+          {!currentConversation ? (
+            <div className="flex-1 flex items-center justify-center">
+              <div className="text-center max-w-md mx-auto p-8">
+                <div className="bg-bg-secondary rounded-full p-6 mb-6 mx-auto w-fit">
+                  <Bot className="h-12 w-12 mx-auto text-text-tertiary" />
+                </div>
+                <h2 className="text-2xl font-bold text-text-primary mb-4">
+                  Welcome to Ollama Chat
+                </h2>
+                <p className="text-text-secondary mb-8">
+                  Start typing below to begin your first conversation with an AI model.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-lg">
+              {currentConversation.messages.map((message) => (
+                <MessageBubble
+                  key={message.id}
+                  message={message}
+                  conversationId={currentConversation.id}
+                />
+              ))}
+              
+              {/* Streaming message */}
+              {streamingMessage && (
+                <MessageBubble
+                  message={{
+                    id: streamingMessageId || 'streaming',
+                    role: 'assistant',
+                    content: streamingMessage,
+                    createdAt: new Date().toISOString(),
+                    model: getConversationModel(currentConversation.id)
+                  }}
+                  conversationId={currentConversation.id}
+                  isStreaming={true}
+                />
+              )}
+            </div>
+          )}
           <div ref={messagesEndRef} />
         </div>
       </div>
@@ -335,19 +372,21 @@ function MessageBubble({
   let isMarkdown: boolean = false
 
   if (isStreaming) {
-    const streamingParsed = parseStreamingContent(message.content)
+    // For streaming, we parse the content as if it's static to extract thinking sections
+    const streamingParsed = parseMessageContent(message.content)
     thinkingSections = streamingParsed.thinkingSections
-    partialThinking = streamingParsed.partialThinking
+    partialThinking = null // We don't have partial thinking for streaming display
     regularContent = streamingParsed.regularContent
     isMarkdown = streamingParsed.isMarkdown || false
   } else {
     const staticParsed = parseMessageContent(message.content)
     thinkingSections = staticParsed.thinkingSections
+    partialThinking = null // Not used in static parsing either
     regularContent = staticParsed.regularContent
     isMarkdown = staticParsed.isMarkdown || false
   }
   
-  const hasThinking = thinkingSections.length > 0 || (partialThinking && partialThinking.trim())
+  const hasThinking = thinkingSections.length > 0
   
   // Special rendering for system messages
   if (isSystem) {

@@ -86,8 +86,8 @@ export async function POST(request: NextRequest) {
         )
       }
       return NextResponse.json(
-        { error: 'Ollama server error' }, 
-        { status: ollamaResponse.status }
+        { error: 'Ollama server error' },
+        { status: 500 }
       )
     }
 

@@ -98,40 +98,7 @@ export default function Home() {
     return null // Will redirect to signin
   }
 
-  // Show welcome state if no conversations exist
-  if (!hasConversations) {
-    return (
-      <MainLayout
-        header={<Header />}
-        sidebar={<Sidebar />}
-        chat={
-          <div className="flex-1 flex items-center justify-center bg-bg-primary">
-            <div className="text-center max-w-md mx-auto p-8">
-              <div className="bg-bg-secondary rounded-full p-6 mb-6 mx-auto w-fit">
-                <MessageSquare className="h-12 w-12 mx-auto text-text-tertiary" />
-              </div>
-              <h1 className="text-2xl font-bold text-text-primary mb-4">
-                Welcome to Ollama Chat
-              </h1>
-              <p className="text-text-secondary mb-8">
-                Start your first conversation with an AI model. Choose from various models and begin chatting right away.
-              </p>
-              <Button
-                onClick={createNewConversation}
-                className="h-12 px-8 text-lg"
-                variant="default"
-              >
-                <Plus className="h-5 w-5 mr-2" />
-                Start New Conversation
-              </Button>
-            </div>
-          </div>
-        }
-      />
-    )
-  }
-
-  // This should not be reached as we redirect to conversations above
+  // Always show the chat interface, even if no conversations exist
   return (
     <MainLayout
       header={<Header />}
