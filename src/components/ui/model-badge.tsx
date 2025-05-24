@@ -72,8 +72,8 @@ export function ModelBadge({ model, size = "md", variant = "default", className 
     lg: "px-2.5 py-1.5 text-sm"
   }
 
-  const displayName = variant === "compact" 
-    ? model.split(':')[0].substring(0, 8) + (model.length > 8 ? '...' : '')
+  const displayName = variant === "compact"
+    ? model.length > 18 ? model.substring(0, 18) + '...' : model
     : model
 
   return (

@@ -177,7 +177,7 @@ export function ConversationModelSelector({
           />
           
           {/* Dropdown */}
-          <div className="absolute top-full right-0 mt-xs min-w-[200px] max-w-[300px] bg-bg-primary border border-border-primary rounded-lg shadow-elevated z-50 max-h-[300px] overflow-y-auto">
+          <div className="absolute top-full right-0 mt-xs min-w-[200px] max-w-[500px] bg-bg-primary border border-border-primary rounded-lg shadow-elevated z-50 max-h-[300px] overflow-y-auto">
             {isLoadingModels ? (
               <div className="p-md text-center">
                 <div className="flex items-center justify-center space-xs">
@@ -208,7 +208,7 @@ export function ConversationModelSelector({
                     className="w-full px-md py-sm text-left hover:bg-bg-secondary focus:bg-bg-secondary focus:outline-none transition-colors flex items-center justify-between group"
                   >
                     <div className="flex-1 min-w-0">
-                      <div className="text-body-medium text-text-primary font-medium truncate">
+                      <div className="text-body-medium text-text-primary font-medium break-words" title={model.name}>
                         {model.name}
                       </div>
                       {model.details?.parameter_size && (
