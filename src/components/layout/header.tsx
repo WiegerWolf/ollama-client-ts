@@ -2,7 +2,6 @@
 
 import { Menu, X, Settings, User, LogOut } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { ModelSelector } from "@/components/ui/model-selector"
 import { useChatStore } from "@/stores/chat-store"
 import { useSession, signOut } from "next-auth/react"
 
@@ -29,10 +28,6 @@ export function Header() {
             Ollama Chat
           </h1>
           
-          <div className="hidden sm:flex items-center">
-            <span className="text-body-small text-text-tertiary mr-xs">•</span>
-            <ModelSelector />
-          </div>
         </div>
       </div>
 
