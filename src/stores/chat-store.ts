@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { ChatMessage, OllamaModel } from '@/lib/ollama-client'
+import { useRouter } from 'next/navigation'
 
 interface ModelChange {
   id: string
@@ -68,11 +69,13 @@ interface ChatState {
   settingsLoading: boolean
   
   // Actions
-  setCurrentConversation: (conversation: Conversation | null) => void
+  setCurrentConversation: (conversation: Conversation | null, updateUrl?: boolean) => void
   setConversations: (conversations: Conversation[]) => void
   addConversation: (conversation: Conversation) => void
   updateConversation: (id: string, updates: Partial<Conversation>) => void
   deleteConversation: (id: string) => void
+  initializeFromUrl: (conversationId: string) => Promise<void>
+  navigateToConversation: (conversationId: string) => void
   
   setModels: (models: OllamaModel[]) => void
   setSelectedModel: (model: string) => void
@@ -132,11 +135,46 @@ export const useChatStore = create<ChatState>((set, get) => ({
   settingsLoading: false,
 
   // Actions
-  setCurrentConversation: (conversation) => {
+  setCurrentConversation: (conversation, updateUrl = true) => {
     set({ currentConversation: conversation })
     // Load model data when switching conversations
     if (conversation) {
       get().loadConversationModelData(conversation.id)
+      
+      // Update URL if requested and we're in a browser environment
+      if (updateUrl && typeof window !== 'undefined') {
+        const url = `/conversation/${conversation.id}`
+        window.history.pushState({}, '', url)
+      }
+    }
+  },
+
+  initializeFromUrl: async (conversationId) => {
+    try {
+      // Load all conversations first
+      const conversationsResponse = await fetch('/api/conversations')
+      if (conversationsResponse.ok) {
+        const allConversations = await conversationsResponse.json()
+        get().setConversations(allConversations)
+      }
+
+      // Load the specific conversation
+      const response = await fetch(`/api/conversations/${conversationId}`)
+      if (response.ok) {
+        const conversation = await response.json()
+        get().setCurrentConversation(conversation, false) // Don't update URL since we're initializing from URL
+      } else {
+        throw new Error('Conversation not found')
+      }
+    } catch (error) {
+      console.error('Error initializing from URL:', error)
+      throw error
+    }
+  },
+
+  navigateToConversation: (conversationId) => {
+    if (typeof window !== 'undefined') {
+      window.location.href = `/conversation/${conversationId}`
     }
   },
 

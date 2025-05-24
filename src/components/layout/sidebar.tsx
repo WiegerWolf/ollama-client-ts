@@ -7,6 +7,8 @@ import { useChatStore } from "@/stores/chat-store"
 import { formatRelativeTime, generateConversationTitle } from "@/lib/utils"
 import { cn } from "@/lib/utils"
 import { useSession } from "next-auth/react"
+import { useRouter, usePathname } from "next/navigation"
+import Link from "next/link"
 
 interface Conversation {
   id: string
@@ -37,10 +39,13 @@ export function Sidebar() {
     selectedModel,
     searchQuery,
     filteredConversations,
-    setSearchQuery
+    setSearchQuery,
+    navigateToConversation
   } = useChatStore()
   
   const { data: session } = useSession()
+  const router = useRouter()
+  const pathname = usePathname()
   const [isLoading, setIsLoading] = useState(true)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingTitle, setEditingTitle] = useState('')
@@ -78,10 +83,8 @@ export function Sidebar() {
 
       if (response.ok) {
         const newConversation = await response.json()
-        setCurrentConversation({
-          ...newConversation,
-          messages: []
-        })
+        // Navigate to the new conversation
+        router.push(`/conversation/${newConversation.id}`)
         fetchConversations() // Refresh the list
       }
     } catch (error) {
@@ -105,16 +108,9 @@ export function Sidebar() {
     }
   }
 
-  const selectConversation = async (conversation: Conversation) => {
-    try {
-      const response = await fetch(`/api/conversations/${conversation.id}`)
-      if (response.ok) {
-        const fullConversation = await response.json()
-        setCurrentConversation(fullConversation)
-      }
-    } catch (error) {
-      console.error('Error fetching conversation:', error)
-    }
+  const selectConversation = (conversation: Conversation) => {
+    // Navigate to the conversation URL
+    router.push(`/conversation/${conversation.id}`)
   }
 
   const startEditingTitle = (conversation: Conversation, e: React.MouseEvent) => {
@@ -195,6 +191,11 @@ export function Sidebar() {
   const conversationsToShow = searchQuery.trim() ? filteredConversations : conversations
   const groupedConversations = groupConversationsByDate(conversationsToShow)
 
+  // Get current conversation ID from URL
+  const currentConversationId = pathname.startsWith('/conversation/')
+    ? pathname.split('/conversation/')[1]
+    : null
+
   const renderConversationGroup = (title: string, conversations: Conversation[]) => {
     if (conversations.length === 0) return null
 
@@ -205,14 +206,19 @@ export function Sidebar() {
         </h3>
         <div className="px-md space-y-xs">
           {conversations.map((conversation) => (
-            <div
+            <Link
               key={conversation.id}
-              onClick={() => editingId !== conversation.id && selectConversation(conversation)}
+              href={`/conversation/${conversation.id}`}
               className={cn(
-                "group flex items-center justify-between p-md rounded-lg cursor-pointer transition-all duration-150 hover:bg-bg-secondary border border-transparent hover:border-border-primary",
-                currentConversation?.id === conversation.id && "bg-bg-secondary border-border-primary shadow-sm",
-                editingId === conversation.id && "cursor-default"
+                "group flex items-center justify-between p-md rounded-lg cursor-pointer transition-all duration-150 hover:bg-bg-secondary border border-transparent hover:border-border-primary block",
+                currentConversationId === conversation.id && "bg-bg-secondary border-border-primary shadow-sm",
+                editingId === conversation.id && "cursor-default pointer-events-none"
               )}
+              onClick={(e) => {
+                if (editingId === conversation.id) {
+                  e.preventDefault()
+                }
+              }}
             >
               <div className="flex items-center space-md flex-1 min-w-0">
                 <MessageSquare className="h-4 w-4 text-text-secondary flex-shrink-0" />
@@ -251,6 +257,7 @@ export function Sidebar() {
                       className="h-7 w-7 transition-all duration-150 hover:bg-success-green hover:text-white focus-ring"
                       onClick={(e) => {
                         e.stopPropagation()
+                        e.preventDefault()
                         saveTitle(conversation.id)
                       }}
                       aria-label="Save title"
@@ -263,6 +270,7 @@ export function Sidebar() {
                       className="h-7 w-7 transition-all duration-150 hover:bg-bg-tertiary focus-ring"
                       onClick={(e) => {
                         e.stopPropagation()
+                        e.preventDefault()
                         cancelEditingTitle()
                       }}
                       aria-label="Cancel editing"
@@ -276,7 +284,11 @@ export function Sidebar() {
                       variant="ghost"
                       size="icon"
                       className="opacity-0 group-hover:opacity-100 h-7 w-7 transition-all duration-150 hover:bg-primary-blue hover:text-white focus-ring"
-                      onClick={(e) => startEditingTitle(conversation, e)}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        e.preventDefault()
+                        startEditingTitle(conversation, e)
+                      }}
                       aria-label={`Edit title: ${conversation.title}`}
                     >
                       <Edit2 className="h-3 w-3" />
@@ -285,7 +297,11 @@ export function Sidebar() {
                       variant="ghost"
                       size="icon"
                       className="opacity-0 group-hover:opacity-100 h-7 w-7 transition-all duration-150 hover:bg-error-red hover:text-white focus-ring"
-                      onClick={(e) => handleDeleteConversation(conversation.id, e)}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        e.preventDefault()
+                        handleDeleteConversation(conversation.id, e)
+                      }}
                       aria-label={`Delete conversation: ${conversation.title}`}
                     >
                       <Trash2 className="h-3 w-3" />
@@ -293,7 +309,7 @@ export function Sidebar() {
                   </>
                 )}
               </div>
-            </div>
+            </Link>
           ))}
         </div>
       </div>

@@ -2,13 +2,14 @@
 
 import { useState } from "react"
 import { signIn, getSession } from "next-auth/react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Bot } from "lucide-react"
 
 export default function SignIn() {
   const [isLoading, setIsLoading] = useState(false)
   const router = useRouter()
+  const searchParams = useSearchParams()
 
   const handleGuestSignIn = async () => {
     setIsLoading(true)
@@ -22,7 +23,13 @@ export default function SignIn() {
       })
 
       if (result?.ok) {
-        router.push("/")
+        // Check for callbackUrl parameter to redirect to intended conversation
+        const callbackUrl = searchParams.get('callbackUrl')
+        if (callbackUrl) {
+          router.push(decodeURIComponent(callbackUrl))
+        } else {
+          router.push("/")
+        }
       }
     } catch (error) {
       console.error("Sign in error:", error)
