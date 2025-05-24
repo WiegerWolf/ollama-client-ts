@@ -51,6 +51,7 @@ interface ChatState {
   // UI state
   isLoading: boolean
   isStreaming: boolean
+  isCancelling: boolean
   sidebarOpen: boolean
   settingsPanelOpen: boolean
   modelChangeLoading: boolean
@@ -84,6 +85,8 @@ interface ChatState {
   
   setIsLoading: (loading: boolean) => void
   setIsStreaming: (streaming: boolean) => void
+  setIsCancelling: (cancelling: boolean) => void
+  cancelGeneration: () => void
   setSidebarOpen: (open: boolean) => void
   setSettingsPanelOpen: (open: boolean) => void
   setModelChangeLoading: (loading: boolean) => void
@@ -116,6 +119,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   modelChangeHistory: {},
   isLoading: false,
   isStreaming: false,
+  isCancelling: false,
   sidebarOpen: true,
   settingsPanelOpen: false,
   modelChangeLoading: false,
@@ -233,8 +237,17 @@ export const useChatStore = create<ChatState>((set, get) => ({
   setIsLoading: (loading) => 
     set({ isLoading: loading }),
 
-  setIsStreaming: (streaming) => 
+  setIsStreaming: (streaming) =>
     set({ isStreaming: streaming }),
+
+  setIsCancelling: (cancelling) =>
+    set({ isCancelling: cancelling }),
+
+  cancelGeneration: () => {
+    set({ isCancelling: true })
+    // The actual cancellation will be handled by the AbortController in the component
+    // This just sets the UI state to show immediate feedback
+  },
 
   setSidebarOpen: (open) =>
     set({ sidebarOpen: open }),

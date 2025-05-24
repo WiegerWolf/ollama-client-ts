@@ -57,6 +57,7 @@ export class OllamaClient {
       onToken?: (token: string) => void;
       onComplete?: (response: ChatResponse) => void;
       onError?: (error: Error) => void;
+      signal?: AbortSignal;
     } = {}
   ): Promise<ChatResponse | void> {
     const {
@@ -65,7 +66,8 @@ export class OllamaClient {
       format,
       onToken,
       onComplete,
-      onError
+      onError,
+      signal
     } = options;
 
     const requestBody: ChatRequest = {
@@ -85,6 +87,7 @@ export class OllamaClient {
           "Content-Type": "application/json",
         },
         body: JSON.stringify(requestBody),
+        signal: signal
       });
 
       if (!response.ok) {
@@ -92,7 +95,7 @@ export class OllamaClient {
       }
 
       if (stream) {
-        return this.handleStreamingResponse(response, onToken, onComplete, onError);
+        return this.handleStreamingResponse(response, onToken, onComplete, onError, signal);
       } else {
         const data = await response.json() as ChatResponse;
         onComplete?.(data);
@@ -109,7 +112,8 @@ export class OllamaClient {
     response: Response,
     onToken?: (token: string) => void,
     onComplete?: (response: ChatResponse) => void,
-    onError?: (error: Error) => void
+    onError?: (error: Error) => void,
+    signal?: AbortSignal
   ): Promise<void> {
     const reader = response.body?.getReader();
     if (!reader) {
@@ -122,6 +126,12 @@ export class OllamaClient {
 
     try {
       while (true) {
+        // Check for cancellation before each read
+        if (signal?.aborted) {
+          console.log('Ollama client request cancelled')
+          break;
+        }
+
         const { done, value } = await reader.read();
         if (done) break;
 
@@ -152,13 +162,27 @@ export class OllamaClient {
             continue;
           }
         }
+
+        // Check for cancellation after processing each chunk
+        if (signal?.aborted) {
+          console.log('Ollama client request cancelled during processing')
+          break;
+        }
       }
     } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        console.log('Ollama client streaming aborted');
+        return; // Don't call onError for user cancellation
+      }
       const err = error instanceof Error ? error : new Error(String(error));
       onError?.(err);
       throw err;
     } finally {
-      reader.releaseLock();
+      try {
+        reader.releaseLock();
+      } catch (cleanupError) {
+        console.error('Error releasing reader lock:', cleanupError);
+      }
     }
   }
 

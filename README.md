@@ -12,6 +12,7 @@ A modern, full-featured web application for chatting with Ollama models. Built w
 - 🎨 **Modern UI** - Responsive design with dark/light mode support
 - 🔄 **Conversation management** - Create, edit, and delete conversations
 - ⚙️ **Advanced settings** - Temperature control, system prompts
+- ⏹️ **Request cancellation** - Stop generation instantly with smart cleanup
 
 ## Prerequisites
 
@@ -128,6 +129,25 @@ ollama-client-ts/
 - Temperature and system prompt controls
 - Performance statistics display
 
+### Request Cancellation
+- **Instant stop button** - Cancel generation immediately during streaming
+- **Smart cleanup** - Properly handles partial responses and resource cleanup
+- **Database integrity** - Saves partial messages with cancellation markers
+- **Resource efficiency** - Immediately frees server resources when cancelled
+- **Error handling** - Graceful handling of cancellation at any stage
+
+#### When to Use Cancellation
+- **Model struggles** - When the model generates infinite or repetitive content
+- **Wrong direction** - When the response is heading in an undesired direction
+- **Resource management** - To free up server resources for other requests
+- **Quick iteration** - To quickly try different prompts or models
+
+#### How It Works
+1. **Frontend**: Red stop button (⏹️) appears during generation
+2. **Backend**: Immediately aborts the Ollama request and cleans up resources
+3. **Database**: Saves partial response with "[Response cancelled]" marker
+4. **UI**: Provides immediate feedback and returns to ready state
+
 ### Database Schema
 - Users and authentication
 - Conversations with settings
@@ -200,9 +220,44 @@ bun run prisma db push
    - Check `NEXTAUTH_SECRET` is set
    - Verify `NEXTAUTH_URL` matches your domain
 
+4. **Request cancellation issues:**
+   - Ensure JavaScript is enabled in your browser
+   - Check browser console for AbortError handling
+   - Visit `/cancellation-test` to test the feature
+   - See [Request Cancellation Guide](docs/user-guide-cancellation.md) for details
+
+### Testing Request Cancellation
+
+The application includes comprehensive testing tools for the cancellation feature:
+
+#### Interactive Test Page
+Navigate to `/cancellation-test` to access the interactive testing interface:
+- **Start Long Request**: Tests cancellation with lengthy generation
+- **Cancel Request**: Manual cancellation testing
+- **Test Quick Cancel**: Automated 2-second cancellation test
+
+#### Automated Test Script
+Run the automated test suite:
+```bash
+node test-scripts/cancellation-test.js
+```
+
+This script tests:
+- Basic request cancellation
+- Partial response handling
+- Server timeout behavior
+- Resource cleanup verification
+
+#### What to Look For
+- ✅ "Request successfully cancelled!" in logs
+- Immediate UI response when stop button is clicked
+- Proper cleanup of streaming state
+- Partial messages saved with "[Response cancelled]" marker
+
 ### Performance Tips
 
 - Use streaming for better perceived performance
+- **Use cancellation** to immediately free resources when responses go wrong
 - Implement conversation pagination for large histories
 - Consider Redis for session storage in production
 - Optimize database queries with proper indexing

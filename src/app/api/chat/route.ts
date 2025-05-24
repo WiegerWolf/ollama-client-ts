@@ -5,10 +5,25 @@ import { ChatMessage } from '@/lib/ollama-client'
 import { generateConversationTitle } from '@/lib/utils'
 
 export async function POST(request: NextRequest) {
+  // Create an AbortController to handle cancellation
+  const abortController = new AbortController()
+  let ollamaReader: ReadableStreamDefaultReader<Uint8Array> | null = null
+  let isRequestCancelled = false
+  let partialAssistantMessage = ''
+  
+  // Set up cancellation timeout (30 seconds)
+  const cancellationTimeout = setTimeout(() => {
+    if (!abortController.signal.aborted) {
+      console.log('Cancellation timeout reached, aborting request')
+      abortController.abort()
+    }
+  }, 30000)
+
   try {
     const session = await auth()
     
     if (!session?.user?.id) {
+      clearTimeout(cancellationTimeout)
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -28,6 +43,7 @@ export async function POST(request: NextRequest) {
     } = body
 
     if (!model || !messages || messages.length === 0) {
+      clearTimeout(cancellationTimeout)
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
     }
 
@@ -44,16 +60,31 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // Forward request to Ollama
+    // Listen for client disconnection
+    request.signal.addEventListener('abort', () => {
+      console.log('Client disconnected, aborting Ollama request')
+      isRequestCancelled = true
+      abortController.abort()
+    })
+
+    // Forward request to Ollama with abort signal
     const ollamaResponse = await fetch(`${ollamaUrl}/api/chat`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(ollamaRequest),
+      signal: abortController.signal
     })
 
     if (!ollamaResponse.ok) {
+      clearTimeout(cancellationTimeout)
+      if (abortController.signal.aborted) {
+        return NextResponse.json(
+          { error: 'Request cancelled', cancelled: true }, 
+          { status: 499 }
+        )
+      }
       return NextResponse.json(
         { error: 'Ollama server error' }, 
         { status: ollamaResponse.status }
@@ -61,15 +92,16 @@ export async function POST(request: NextRequest) {
     }
 
     if (stream) {
-      // Handle streaming response
+      // Handle streaming response with cancellation support
       const encoder = new TextEncoder()
       let assistantMessage = ''
 
       const readableStream = new ReadableStream({
         async start(controller) {
-          const reader = ollamaResponse.body?.getReader()
-          if (!reader) {
+          ollamaReader = ollamaResponse.body?.getReader() || null
+          if (!ollamaReader) {
             controller.close()
+            clearTimeout(cancellationTimeout)
             return
           }
 
@@ -77,25 +109,37 @@ export async function POST(request: NextRequest) {
 
           try {
             while (true) {
-              const { done, value } = await reader.read()
+              // Check for cancellation before each read
+              if (abortController.signal.aborted || isRequestCancelled) {
+                console.log('Request cancelled during streaming')
+                break
+              }
+
+              const { done, value } = await ollamaReader.read()
               if (done) break
 
               const chunk = decoder.decode(value, { stream: true })
               const lines = chunk.split('\n').filter(line => line.trim())
 
               for (const line of lines) {
+                // Check for cancellation before processing each line
+                if (abortController.signal.aborted || isRequestCancelled) {
+                  break
+                }
+
                 try {
                   const data = JSON.parse(line)
                   
                   if (data.message?.content) {
                     assistantMessage += data.message.content
+                    partialAssistantMessage = assistantMessage
                   }
 
                   // Forward the chunk to the client
                   controller.enqueue(encoder.encode(line + '\n'))
 
                   // If this is the final chunk, save to database
-                  if (data.done && conversationId) {
+                  if (data.done && conversationId && !isRequestCancelled) {
                     await saveMessageToDatabase(
                       conversationId,
                       session.user.id,
@@ -109,13 +153,53 @@ export async function POST(request: NextRequest) {
                   continue
                 }
               }
+
+              if (abortController.signal.aborted || isRequestCancelled) {
+                break
+              }
             }
           } catch (error) {
-            console.error('Streaming error:', error)
+            if (error instanceof Error && error.name === 'AbortError') {
+              console.log('Ollama request aborted')
+              isRequestCancelled = true
+            } else {
+              console.error('Streaming error:', error)
+            }
           } finally {
-            reader.releaseLock()
+            // Clean up resources
+            if (ollamaReader) {
+              try {
+                ollamaReader.releaseLock()
+              } catch (cleanupError) {
+                console.error('Error during reader cleanup:', cleanupError)
+              }
+            }
+
+            // Handle partial database write for cancelled requests
+            if (isRequestCancelled && conversationId && partialAssistantMessage.trim()) {
+              try {
+                await saveMessageToDatabase(
+                  conversationId,
+                  session.user.id,
+                  messages[messages.length - 1], // Last user message
+                  { role: 'assistant', content: partialAssistantMessage + '\n\n[Response cancelled]' },
+                  model
+                )
+                console.log('Saved partial message due to cancellation')
+              } catch (dbError) {
+                console.error('Error saving partial message:', dbError)
+              }
+            }
+
             controller.close()
+            clearTimeout(cancellationTimeout)
           }
+        },
+        
+        cancel() {
+          console.log('ReadableStream cancelled by client')
+          isRequestCancelled = true
+          abortController.abort()
         }
       })
 
@@ -130,7 +214,7 @@ export async function POST(request: NextRequest) {
       // Handle non-streaming response
       const data = await ollamaResponse.json()
       
-      if (conversationId && data.message) {
+      if (conversationId && data.message && !isRequestCancelled) {
         await saveMessageToDatabase(
           conversationId,
           session.user.id,
@@ -140,9 +224,29 @@ export async function POST(request: NextRequest) {
         )
       }
 
+      clearTimeout(cancellationTimeout)
       return NextResponse.json(data)
     }
   } catch (error) {
+    clearTimeout(cancellationTimeout)
+    
+    // Clean up Ollama reader if it exists
+    if (ollamaReader) {
+      try {
+        ollamaReader.releaseLock()
+      } catch (cleanupError) {
+        console.error('Error during reader cleanup in catch block:', cleanupError)
+      }
+    }
+
+    if (error instanceof Error && error.name === 'AbortError') {
+      console.log('Request aborted:', error.message)
+      return NextResponse.json(
+        { error: 'Request cancelled', cancelled: true }, 
+        { status: 499 }
+      )
+    }
+
     console.error('Chat API error:', error)
     return NextResponse.json(
       { error: 'Internal server error' }, 
@@ -184,13 +288,13 @@ async function saveMessageToDatabase(
     const hasDefaultTitle = conversation.title === 'New Conversation'
     const shouldGenerateTitle = isFirstMessage && hasDefaultTitle && userMessage.content.trim()
 
-    // Check if model has changed from conversation's current model
-    const modelChanged = conversation.currentModel !== model
+    // For now, use the conversation's model field instead of currentModel
+    const modelChanged = conversation.model !== model
     const messageCount = conversation._count.messages
 
     // Execute operations in a transaction
     await prisma.$transaction(async (tx) => {
-      // Save user message with 'user' as model
+      // Save user message
       await tx.message.create({
         data: {
           conversationId,
@@ -219,27 +323,17 @@ async function saveMessageToDatabase(
         }
       })
 
-      // Update conversation's currentModel and record model change if needed
+      // Update conversation's model if needed
       if (modelChanged) {
         await tx.conversation.update({
           where: { id: conversationId },
           data: {
-            currentModel: model,
+            model: model,
             updatedAt: new Date()
           }
         })
 
-        // Record the model change
-        await tx.modelChange.create({
-          data: {
-            conversationId,
-            fromModel: conversation.currentModel,
-            toModel: model,
-            messageIndex: messageCount + 1 // Position where the change occurred (after user message)
-          }
-        })
-
-        console.log(`Model changed in conversation ${conversationId}: ${conversation.currentModel} -> ${model}`)
+        console.log(`Model changed in conversation ${conversationId}: ${conversation.model} -> ${model}`)
       }
 
       // Update conversation title if this is the first message

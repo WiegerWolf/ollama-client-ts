@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useRef, useEffect } from "react"
-import { Send, Bot, User } from "lucide-react"
+import { Send, Bot, User, Square } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useChatStore } from "@/stores/chat-store"
 import { ChatMessage } from "@/lib/ollama-client"
@@ -29,7 +29,10 @@ export function ChatInterface() {
     temperature,
     systemPrompt,
     isStreaming,
+    isCancelling,
     setIsStreaming,
+    setIsCancelling,
+    cancelGeneration,
     addMessage,
     updateMessage
   } = useChatStore()
@@ -44,6 +47,7 @@ export function ChatInterface() {
   } | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const abortControllerRef = useRef<AbortController | null>(null)
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -73,6 +77,11 @@ export function ChatInterface() {
     const userMessage = input.trim()
     setInput("")
     setIsStreaming(true)
+    setIsCancelling(false)
+
+    // Create new AbortController for this request
+    const abortController = new AbortController()
+    abortControllerRef.current = abortController
 
     // Add user message to the conversation
     addMessage(currentConversation.id, {
@@ -110,6 +119,7 @@ export function ChatInterface() {
           temperature,
           stream: true
         }),
+        signal: abortController.signal
       })
 
       if (!response.ok) {
@@ -125,6 +135,11 @@ export function ChatInterface() {
       let assistantContent = ""
 
       while (true) {
+        // Check if request was aborted
+        if (abortController.signal.aborted) {
+          break
+        }
+
         const { done, value } = await reader.read()
         if (done) break
 
@@ -159,20 +174,46 @@ export function ChatInterface() {
         }
       }
     } catch (error) {
-      console.error('Error sending message:', error)
+      if (error instanceof Error && error.name === 'AbortError') {
+        // Request was cancelled - clean up streaming state
+        console.log('Request cancelled by user')
+      } else {
+        console.error('Error sending message:', error)
+      }
       setStreamingMessage("")
       setStreamingMessageId(null)
     } finally {
       setIsStreaming(false)
+      setIsCancelling(false)
+      abortControllerRef.current = null
+    }
+  }
+
+  const handleStop = () => {
+    if (abortControllerRef.current && !isCancelling) {
+      setIsCancelling(true)
+      cancelGeneration()
+      abortControllerRef.current.abort()
     }
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
-      handleSubmit(e)
+      if (!isStreaming) {
+        handleSubmit(e)
+      }
     }
   }
+
+  // Cleanup AbortController on unmount
+  useEffect(() => {
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort()
+      }
+    }
+  }, [])
 
   if (!currentConversation) {
     return (
@@ -260,15 +301,28 @@ export function ChatInterface() {
                 disabled={isStreaming}
               />
             </div>
-            <Button
-              type="submit"
-              disabled={!input.trim() || isStreaming}
-              className="px-lg py-md h-11 focus-ring"
-              variant={!input.trim() || isStreaming ? "secondary" : "default"}
-            >
-              <Send className="h-4 w-4" />
-              <span className="sr-only">Send message</span>
-            </Button>
+            {isStreaming ? (
+              <Button
+                type="button"
+                onClick={handleStop}
+                disabled={isCancelling}
+                className="px-lg py-md h-11 focus-ring bg-red-600 hover:bg-red-700 text-white border-red-600 hover:border-red-700"
+                variant="default"
+              >
+                <Square className="h-4 w-4" />
+                <span className="sr-only">{isCancelling ? "Stopping..." : "Stop generation"}</span>
+              </Button>
+            ) : (
+              <Button
+                type="submit"
+                disabled={!input.trim()}
+                className="px-lg py-md h-11 focus-ring"
+                variant={!input.trim() ? "secondary" : "default"}
+              >
+                <Send className="h-4 w-4" />
+                <span className="sr-only">Send message</span>
+              </Button>
+            )}
           </form>
         </div>
       </div>
