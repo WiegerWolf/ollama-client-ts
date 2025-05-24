@@ -144,27 +144,27 @@ export function Sidebar() {
     if (conversations.length === 0) return null
 
     return (
-      <div className="mb-lg">
-        <h3 className="text-body-small text-tertiary font-medium px-lg mb-sm uppercase tracking-wide">
+      <div className="mb-xl">
+        <h3 className="text-body-small text-text-tertiary font-semibold px-lg mb-md uppercase tracking-wide">
           {title}
         </h3>
-        <div className="px-lg space-y-xs">
+        <div className="px-md space-y-xs">
           {conversations.map((conversation) => (
             <div
               key={conversation.id}
               onClick={() => selectConversation(conversation)}
               className={cn(
-                "group flex items-center justify-between p-md rounded-lg cursor-pointer transition-layout hover:bg-secondary",
-                currentConversation?.id === conversation.id && "bg-secondary"
+                "group flex items-center justify-between p-md rounded-lg cursor-pointer transition-all duration-150 hover:bg-bg-secondary border border-transparent hover:border-border-primary",
+                currentConversation?.id === conversation.id && "bg-bg-secondary border-border-primary shadow-sm"
               )}
             >
               <div className="flex items-center space-md flex-1 min-w-0">
-                <MessageSquare className="h-4 w-4 text-secondary flex-shrink-0" />
+                <MessageSquare className="h-4 w-4 text-text-secondary flex-shrink-0" />
                 <div className="flex-1 min-w-0">
-                  <p className="text-body-medium text-primary font-medium truncate">
+                  <p className="text-body-medium text-text-primary font-medium truncate">
                     {conversation.title}
                   </p>
-                  <p className="text-body-small text-secondary">
+                  <p className="text-body-small text-text-tertiary">
                     {formatRelativeTime(conversation.updatedAt)} • {conversation.model}
                   </p>
                 </div>
@@ -173,7 +173,7 @@ export function Sidebar() {
               <Button
                 variant="ghost"
                 size="icon"
-                className="opacity-0 group-hover:opacity-100 h-6 w-6 transition-fast"
+                className="opacity-0 group-hover:opacity-100 h-7 w-7 transition-all duration-150 hover:bg-error-red hover:text-white focus-ring"
                 onClick={(e) => handleDeleteConversation(conversation.id, e)}
                 aria-label={`Delete conversation: ${conversation.title}`}
               >
@@ -187,15 +187,15 @@ export function Sidebar() {
   }
 
   return (
-    <div className="h-full bg-tertiary border-r border-primary flex flex-col">
+    <div className="h-full bg-bg-tertiary border-r border-border-primary flex flex-col shadow-light">
       {/* Header Section */}
-      <div className="p-lg">
+      <div className="p-lg border-b border-border-primary bg-bg-secondary">
         <Button
           onClick={createNewConversation}
-          className="w-full justify-start h-11"
+          className="w-full justify-start h-11 focus-ring"
           variant="default"
         >
-          <Plus className="h-4 w-4 mr-2" />
+          <Plus className="h-4 w-4 mr-md" />
           New Conversation
         </Button>
       </div>
@@ -207,24 +207,26 @@ export function Sidebar() {
             {/* Loading skeleton */}
             {[...Array(6)].map((_, i) => (
               <div key={i} className="flex items-center space-md p-md mb-xs">
-                <div className="w-4 h-4 bg-secondary rounded animate-pulse" />
+                <div className="w-4 h-4 bg-bg-secondary rounded animate-pulse" />
                 <div className="flex-1">
-                  <div className="w-3/4 h-4 bg-secondary rounded animate-pulse mb-xs" />
-                  <div className="w-1/2 h-3 bg-secondary rounded animate-pulse" />
+                  <div className="w-3/4 h-4 bg-bg-secondary rounded animate-pulse mb-xs" />
+                  <div className="w-1/2 h-3 bg-bg-secondary rounded animate-pulse" />
                 </div>
               </div>
             ))}
           </div>
         ) : conversations.length === 0 ? (
-          <div className="p-lg text-center text-secondary">
-            <MessageSquare className="h-8 w-8 mx-auto mb-md text-tertiary" />
-            <p className="text-body-medium">No conversations yet</p>
-            <p className="text-body-small text-tertiary mt-xs">
+          <div className="p-lg text-center">
+            <div className="bg-bg-secondary rounded-full p-lg mb-lg mx-auto w-fit">
+              <MessageSquare className="h-8 w-8 mx-auto text-text-tertiary" />
+            </div>
+            <p className="text-body-medium text-text-secondary">No conversations yet</p>
+            <p className="text-body-small text-text-tertiary mt-xs">
               Create your first conversation to get started
             </p>
           </div>
         ) : (
-          <div className="py-sm">
+          <div className="py-lg">
             {renderConversationGroup("Today", groupedConversations.today)}
             {renderConversationGroup("Yesterday", groupedConversations.yesterday)}
             {renderConversationGroup("This Week", groupedConversations.thisWeek)}
@@ -234,17 +236,17 @@ export function Sidebar() {
       </div>
 
       {/* Footer Section */}
-      <div className="border-t border-primary p-lg bg-tertiary">
+      <div className="border-t border-border-primary p-lg bg-bg-secondary">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-md">
-            <div className="w-8 h-8 bg-secondary rounded-full flex items-center justify-center">
-              <User className="h-4 w-4 text-secondary" />
+            <div className="w-9 h-9 bg-primary-blue rounded-full flex items-center justify-center border-2 border-primary-blue">
+              <User className="h-4 w-4 text-white" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-body-small text-primary font-medium truncate">
+              <p className="text-body-small text-text-primary font-medium truncate">
                 {session?.user?.name || session?.user?.email || 'User'}
               </p>
-              <p className="text-body-small text-tertiary">
+              <p className="text-body-small text-text-tertiary">
                 {session?.user?.email && session?.user?.name ? session.user.email : 'Signed in'}
               </p>
             </div>
@@ -252,7 +254,7 @@ export function Sidebar() {
           <Button
             variant="ghost"
             size="icon"
-            className="w-8 h-8"
+            className="w-8 h-8 focus-ring"
             aria-label="Settings"
           >
             <Settings className="h-4 w-4" />

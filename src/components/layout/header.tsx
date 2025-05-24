@@ -10,36 +10,41 @@ export function Header() {
   const { data: session } = useSession()
 
   return (
-    <header className="bg-primary border-b border-primary h-[60px] px-lg flex items-center justify-between">
+    <header className="bg-bg-primary border-b border-border-primary h-[60px] px-lg flex items-center justify-between shadow-light">
       {/* Left Section */}
-      <div className="flex items-center">
+      <div className="flex items-center space-md">
         <Button
           variant="ghost"
           size="icon"
           onClick={() => setSidebarOpen(!sidebarOpen)}
-          className="w-10 h-10 mr-lg"
+          className="w-10 h-10 focus-ring"
           aria-label={sidebarOpen ? "Close sidebar" : "Open sidebar"}
         >
           {sidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
         </Button>
         
-        <h1 className="text-heading-medium text-primary font-semibold mr-md">
-          Ollama Chat
-        </h1>
-        
-        {selectedModel && (
-          <span className="text-body-medium text-secondary">
-            Model: {selectedModel}
-          </span>
-        )}
+        <div className="flex items-center space-md">
+          <h1 className="text-heading-medium text-text-primary font-semibold">
+            Ollama Chat
+          </h1>
+          
+          {selectedModel && (
+            <div className="hidden sm:flex items-center">
+              <span className="text-body-small text-text-tertiary mr-xs">•</span>
+              <span className="text-body-medium text-text-secondary bg-bg-secondary px-md py-xs rounded-md border border-border-primary">
+                {selectedModel}
+              </span>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Right Section */}
-      <div className="flex items-center">
+      <div className="flex items-center space-xs">
         <Button
           variant="ghost"
           size="icon"
-          className="w-10 h-10 ml-sm"
+          className="w-10 h-10 focus-ring"
           aria-label="Settings"
         >
           <Settings className="h-5 w-5" />
@@ -48,20 +53,20 @@ export function Header() {
         <Button
           variant="ghost"
           size="icon"
-          className="w-10 h-10 ml-sm"
+          className="w-10 h-10 focus-ring"
           aria-label={`User menu for ${session?.user?.name || session?.user?.email}`}
         >
           <User className="h-5 w-5" />
         </Button>
         
         <Button
-          variant="ghost"
+          variant="outline"
           size="icon"
           onClick={() => signOut()}
-          className="w-10 h-10 ml-sm"
+          className="w-10 h-10 focus-ring ml-sm"
           aria-label="Sign out"
         >
-          <LogOut className="h-5 w-5" />
+          <LogOut className="h-4 w-4" />
         </Button>
       </div>
     </header>

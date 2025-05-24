@@ -152,13 +152,15 @@ export function ChatInterface() {
 
   if (!currentConversation) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-primary">
+      <div className="flex-1 flex items-center justify-center bg-bg-primary">
         <div className="text-center max-w-[800px] mx-auto px-2xl">
-          <Bot className="h-12 w-12 text-tertiary mx-auto mb-3xl" />
-          <h2 className="text-display-medium text-primary mb-lg">
+          <div className="bg-bg-secondary rounded-full p-4xl mb-3xl mx-auto w-fit">
+            <Bot className="h-12 w-12 text-text-tertiary mx-auto" />
+          </div>
+          <h2 className="text-display-medium text-text-primary mb-lg">
             Welcome to Ollama Chat
           </h2>
-          <p className="text-body-large text-secondary">
+          <p className="text-body-large text-text-secondary">
             Select a conversation or create a new one to start chatting with AI models
           </p>
         </div>
@@ -167,11 +169,11 @@ export function ChatInterface() {
   }
 
   return (
-    <div className="flex-1 flex flex-col bg-primary h-full">
+    <div className="flex-1 flex flex-col bg-bg-primary h-full">
       {/* Messages Container */}
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-[800px] mx-auto px-2xl py-lg">
-          <div>
+          <div className="space-y-lg">
             {currentConversation.messages.map((message) => (
               <MessageBubble key={message.id} message={message} />
             ))}
@@ -194,9 +196,9 @@ export function ChatInterface() {
       </div>
 
       {/* Input Area */}
-      <div className="border-t border-primary bg-primary">
+      <div className="border-t border-border-primary bg-bg-primary shadow-light">
         <div className="max-w-[800px] mx-auto px-2xl py-lg">
-          <form onSubmit={handleSubmit} className="flex space-sm">
+          <form onSubmit={handleSubmit} className="flex space-md">
             <div className="flex-1 relative">
               <textarea
                 ref={textareaRef}
@@ -204,7 +206,7 @@ export function ChatInterface() {
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
                 placeholder="Type your message..."
-                className="w-full resize-none rounded-lg border border-primary bg-primary px-lg py-md text-primary placeholder-tertiary focus:border-blue focus:outline-none focus:ring-1 focus:ring-blue transition-fast"
+                className="w-full resize-none rounded-lg border-2 border-border-primary bg-bg-primary px-lg py-md text-text-primary placeholder-text-tertiary focus:border-primary-blue focus:outline-none focus:ring-2 focus:ring-primary-blue focus:ring-offset-2 focus:ring-offset-bg-primary transition-all duration-150"
                 rows={1}
                 style={{ minHeight: '44px', maxHeight: '120px' }}
                 disabled={isStreaming}
@@ -213,9 +215,11 @@ export function ChatInterface() {
             <Button
               type="submit"
               disabled={!input.trim() || isStreaming}
-              className="px-lg py-md h-11"
+              className="px-lg py-md h-11 focus-ring"
+              variant={!input.trim() || isStreaming ? "secondary" : "default"}
             >
               <Send className="h-4 w-4" />
+              <span className="sr-only">Send message</span>
             </Button>
           </form>
         </div>
@@ -234,37 +238,37 @@ function MessageBubble({
   const isUser = message.role === 'user'
   
   return (
-    <div className={cn("flex mb-lg", isUser ? "justify-end" : "justify-start")}>
+    <div className={cn("flex", isUser ? "justify-end" : "justify-start")}>
       <div className={cn(
-        "flex max-w-[80%] space-md",
+        "flex max-w-[85%] space-md",
         isUser ? "flex-row-reverse space-x-reverse" : "flex-row"
       )}>
         {/* Avatar */}
         <div className={cn(
-          "flex h-8 w-8 shrink-0 select-none items-center justify-center rounded-full",
+          "flex h-10 w-10 shrink-0 select-none items-center justify-center rounded-full border-2 shadow-sm",
           isUser
-            ? "bg-blue text-white"
-            : "bg-secondary text-secondary"
+            ? "bg-primary-blue border-primary-blue text-white"
+            : "bg-bg-secondary border-border-primary text-text-secondary"
         )}>
           {isUser ? <User className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
         </div>
 
         {/* Message */}
         <div className={cn(
-          "rounded-lg px-lg py-md",
+          "rounded-lg px-lg py-md shadow-sm border",
           isUser
-            ? "bg-blue text-white"
-            : "bg-secondary text-primary"
+            ? "bg-primary-blue border-primary-blue text-white"
+            : "bg-bg-secondary border-border-primary text-text-primary"
         )}>
-          <div className="whitespace-pre-wrap break-words text-body-medium">
+          <div className="whitespace-pre-wrap break-words text-body-medium leading-relaxed">
             {message.content}
             {isStreaming && (
-              <span className="inline-block w-2 h-4 bg-current animate-pulse ml-1" />
+              <span className="inline-block w-2 h-4 bg-current animate-pulse ml-1 rounded-sm" />
             )}
           </div>
           <div className={cn(
-            "text-body-small mt-xs opacity-70",
-            isUser ? "text-blue-100" : "text-tertiary"
+            "text-body-small mt-md opacity-75",
+            isUser ? "text-blue-100" : "text-text-tertiary"
           )}>
             {formatRelativeTime(message.createdAt)}
           </div>

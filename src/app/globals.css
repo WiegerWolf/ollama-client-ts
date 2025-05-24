@@ -85,26 +85,26 @@
     --shadow-light: 0 1px 3px rgba(0, 0, 0, 0.1);
     --shadow-elevated: 0 4px 6px rgba(0, 0, 0, 0.1);
     
-    /* Legacy shadcn/ui variables for backward compatibility */
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    /* Legacy shadcn/ui variables mapped to design system */
+    --background: 0 0% 100%; /* Maps to --color-bg-primary */
+    --foreground: 210 11% 15%; /* Maps to --color-text-primary */
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card-foreground: 210 11% 15%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --primary: 221.2 83.2% 53.3%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96%;
-    --secondary-foreground: 222.2 84% 4.9%;
+    --popover-foreground: 210 11% 15%;
+    --primary: 217 91% 60%; /* Maps to --color-primary-blue */
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 40% 96%; /* Maps to --color-bg-secondary */
+    --secondary-foreground: 210 11% 15%;
     --muted: 210 40% 96%;
-    --muted-foreground: 215.4 16.3% 46.9%;
+    --muted-foreground: 215 16% 47%;
     --accent: 210 40% 96%;
-    --accent-foreground: 222.2 84% 4.9%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 221.2 83.2% 53.3%;
+    --accent-foreground: 210 11% 15%;
+    --destructive: 0 84% 60%; /* Maps to --color-error-red */
+    --destructive-foreground: 0 0% 100%;
+    --border: 220 13% 91%; /* Maps to --color-border-primary */
+    --input: 220 13% 91%;
+    --ring: 217 91% 60%; /* Maps to --color-primary-blue */
     --radius: 0.5rem;
     --chart-1: 12 76% 61%;
     --chart-2: 173 58% 39%;
@@ -138,26 +138,26 @@
     --color-error-red: #EF4444;
     --color-assistant-gray: #6B7280;
     
-    /* Legacy shadcn/ui variables for backward compatibility */
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
+    /* Legacy shadcn/ui variables mapped to design system - Dark Theme */
+    --background: 210 11% 15%; /* Maps to --color-bg-primary */
+    --foreground: 210 40% 98%; /* Maps to --color-text-primary */
+    --card: 210 11% 15%;
     --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
+    --popover: 210 11% 15%;
     --popover-foreground: 210 40% 98%;
-    --primary: 217.2 91.2% 59.8%;
-    --primary-foreground: 222.2 84% 4.9%;
-    --secondary: 217.2 32.6% 17.5%;
+    --primary: 217 91% 60%; /* Maps to --color-primary-blue */
+    --primary-foreground: 0 0% 100%;
+    --secondary: 215 28% 17%; /* Maps to --color-bg-secondary */
     --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
+    --muted: 215 28% 17%;
+    --muted-foreground: 215 20% 65%;
+    --accent: 215 28% 17%;
     --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 224.3 76.3% 94.1%;
+    --destructive: 0 84% 60%; /* Maps to --color-error-red */
+    --destructive-foreground: 0 0% 100%;
+    --border: 215 28% 17%; /* Maps to --color-border-primary */
+    --input: 215 28% 17%;
+    --ring: 217 91% 60%; /* Maps to --color-primary-blue */
     --chart-1: 220 70% 50%;
     --chart-2: 160 60% 45%;
     --chart-3: 30 80% 55%;
@@ -279,6 +279,37 @@
   .transition-normal { transition: all var(--transition-normal); }
   .transition-slow { transition: all var(--transition-slow); }
   .transition-layout { transition: all var(--transition-layout); }
+
+  /* Enhanced Focus and Interaction States */
+  .focus-ring {
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-blue focus-visible:ring-offset-2 focus-visible:ring-offset-bg-primary;
+  }
+
+  .focus-ring-inset {
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-blue;
+  }
+
+  /* Interactive Element Enhancements */
+  .interactive-element {
+    @apply transition-all duration-150 hover:scale-[1.02] active:scale-[0.98];
+  }
+
+  .button-shadow {
+    @apply shadow-sm hover:shadow-md transition-shadow duration-150;
+  }
+
+  /* Visual Hierarchy Improvements */
+  .section-separator {
+    @apply border-b border-border-primary bg-gradient-to-r from-transparent via-border-primary to-transparent;
+  }
+
+  .content-container {
+    @apply bg-bg-primary border border-border-primary rounded-lg shadow-light;
+  }
+
+  .elevated-surface {
+    @apply bg-bg-primary border border-border-primary rounded-lg shadow-elevated;
+  }
 
   /* Main Layout Grid System */
   .main-grid-layout {
