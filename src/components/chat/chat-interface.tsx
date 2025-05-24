@@ -10,6 +10,8 @@ import { cn } from "@/lib/utils"
 import { ConversationModelSelector } from "./conversation-model-selector"
 import { ModelChangeNotification } from "@/components/ui/model-change-notification"
 import { ModelBadge } from "@/components/ui/model-badge"
+import { ThinkingSections } from "@/components/ui/thinking-section"
+import { parseMessageContent, parseStreamingContent } from "@/lib/content-parser"
 
 interface Message {
   id: string
@@ -296,6 +298,24 @@ function MessageBubble({
   const isUser = message.role === 'user'
   const messageModel = message.model || (conversationId ? getConversationModel(conversationId) : undefined)
   
+  // Parse content to extract thinking sections
+  let thinkingSections: string[] = []
+  let partialThinking: string | null = null
+  let regularContent: string = message.content
+
+  if (isStreaming) {
+    const streamingParsed = parseStreamingContent(message.content)
+    thinkingSections = streamingParsed.thinkingSections
+    partialThinking = streamingParsed.partialThinking
+    regularContent = streamingParsed.regularContent
+  } else {
+    const staticParsed = parseMessageContent(message.content)
+    thinkingSections = staticParsed.thinkingSections
+    regularContent = staticParsed.regularContent
+  }
+  
+  const hasThinking = thinkingSections.length > 0 || (partialThinking && partialThinking.trim())
+  
   return (
     <div className={cn("flex", isUser ? "justify-end" : "justify-start")}>
       <div className={cn(
@@ -318,34 +338,47 @@ function MessageBubble({
           )}
         </div>
 
-        {/* Message */}
-        <div className={cn(
-          "rounded-lg px-lg py-md shadow-sm border",
-          isUser
-            ? "bg-primary-blue border-primary-blue text-white"
-            : "bg-bg-secondary border-border-primary text-text-primary"
-        )}>
-          <div className="whitespace-pre-wrap break-words text-body-medium leading-relaxed">
-            {message.content}
-            {isStreaming && (
-              <span className="inline-block w-2 h-4 bg-current animate-pulse ml-1 rounded-sm" />
-            )}
-          </div>
-          <div className={cn(
-            "text-body-small mt-md opacity-75 flex items-center justify-between",
-            isUser ? "text-blue-100" : "text-text-tertiary"
-          )}>
-            <span>{formatRelativeTime(message.createdAt)}</span>
-            {/* Model badge for assistant messages */}
-            {!isUser && messageModel && (
-              <ModelBadge
-                model={messageModel}
-                size="sm"
-                variant="compact"
-                className="ml-md"
-              />
-            )}
-          </div>
+        {/* Message Container */}
+        <div className="flex flex-col space-y-sm max-w-full">
+          {/* Thinking Sections - Only for assistant messages */}
+          {!isUser && hasThinking && (
+            <ThinkingSections
+              sections={thinkingSections}
+              partialThinking={partialThinking}
+            />
+          )}
+
+          {/* Regular Message Content */}
+          {(regularContent || (!isUser && !hasThinking)) && (
+            <div className={cn(
+              "rounded-lg px-lg py-md shadow-sm border",
+              isUser
+                ? "bg-primary-blue border-primary-blue text-white"
+                : "bg-bg-secondary border-border-primary text-text-primary"
+            )}>
+              <div className="whitespace-pre-wrap break-words text-body-medium leading-relaxed">
+                {regularContent || (isStreaming ? "" : message.content)}
+                {isStreaming && !hasThinking && (
+                  <span className="inline-block w-2 h-4 bg-current animate-pulse ml-1 rounded-sm" />
+                )}
+              </div>
+              <div className={cn(
+                "text-body-small mt-md opacity-75 flex items-center justify-between",
+                isUser ? "text-blue-100" : "text-text-tertiary"
+              )}>
+                <span>{formatRelativeTime(message.createdAt)}</span>
+                {/* Model badge for assistant messages */}
+                {!isUser && messageModel && (
+                  <ModelBadge
+                    model={messageModel}
+                    size="sm"
+                    variant="compact"
+                    className="ml-md"
+                  />
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
