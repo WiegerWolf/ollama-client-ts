@@ -505,4 +505,93 @@
   .slider:focus::-moz-range-thumb {
     box-shadow: 0 0 0 2px var(--color-primary-blue), 0 2px 4px rgba(0, 0, 0, 0.1);
   }
+
+  /* Markdown Content Styles */
+  .markdown-content {
+    /* Ensure proper spacing and typography inheritance */
+    font-family: var(--font-family-primary);
+    color: var(--color-text-primary);
+  }
+
+  .markdown-content > *:first-child {
+    margin-top: 0 !important;
+  }
+
+  .markdown-content > *:last-child {
+    margin-bottom: 0 !important;
+  }
+
+  /* Code block container adjustments */
+  .markdown-content pre {
+    margin: var(--spacing-md) 0;
+    border-radius: var(--border-radius-small);
+    overflow-x: auto;
+  }
+
+  /* Inline code adjustments */
+  .markdown-content code:not(pre code) {
+    background-color: var(--color-bg-tertiary);
+    color: var(--color-text-primary);
+    padding: 2px 4px;
+    border-radius: 4px;
+    font-size: 0.9em;
+    border: 1px solid var(--color-border-primary);
+  }
+
+  /* List spacing adjustments */
+  .markdown-content ul ul,
+  .markdown-content ol ol,
+  .markdown-content ul ol,
+  .markdown-content ol ul {
+    margin-top: var(--spacing-xs);
+    margin-bottom: var(--spacing-xs);
+  }
+
+  /* Table responsive wrapper */
+  .markdown-content table {
+    font-size: var(--font-size-body-medium);
+    line-height: var(--line-height-body-medium);
+  }
+
+  /* Blockquote styling refinements */
+  .markdown-content blockquote {
+    border-left: 4px solid var(--color-primary-blue);
+    margin: var(--spacing-md) 0;
+    padding-left: var(--spacing-lg);
+    background-color: var(--color-bg-secondary);
+    border-radius: 0 var(--border-radius-small) var(--border-radius-small) 0;
+  }
+
+  /* Link hover effects */
+  .markdown-content a:hover {
+    text-decoration: underline;
+    text-decoration-thickness: 2px;
+  }
+
+  /* Image responsiveness */
+  .markdown-content img {
+    max-width: 100%;
+    height: auto;
+    border-radius: var(--border-radius-small);
+    box-shadow: var(--shadow-light);
+  }
+
+  /* Task list styling */
+  .markdown-content input[type="checkbox"] {
+    margin-right: var(--spacing-sm);
+    transform: scale(1.1);
+  }
+
+  /* Horizontal rule styling */
+  .markdown-content hr {
+    border: none;
+    height: 1px;
+    background: linear-gradient(
+      to right,
+      transparent,
+      var(--color-border-primary),
+      transparent
+    );
+    margin: var(--spacing-xl) 0;
+  }
 }

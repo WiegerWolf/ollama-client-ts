@@ -11,6 +11,7 @@ import { ConversationModelSelector } from "./conversation-model-selector"
 import { ModelChangeNotification } from "@/components/ui/model-change-notification"
 import { ModelBadge } from "@/components/ui/model-badge"
 import { ThinkingSections } from "@/components/ui/thinking-section"
+import { MarkdownRenderer } from "@/components/ui/markdown-renderer"
 import { parseMessageContent, parseStreamingContent } from "@/lib/content-parser"
 
 interface Message {
@@ -298,20 +299,23 @@ function MessageBubble({
   const isUser = message.role === 'user'
   const messageModel = message.model || (conversationId ? getConversationModel(conversationId) : undefined)
   
-  // Parse content to extract thinking sections
+  // Parse content to extract thinking sections and detect markdown
   let thinkingSections: string[] = []
   let partialThinking: string | null = null
   let regularContent: string = message.content
+  let isMarkdown: boolean = false
 
   if (isStreaming) {
     const streamingParsed = parseStreamingContent(message.content)
     thinkingSections = streamingParsed.thinkingSections
     partialThinking = streamingParsed.partialThinking
     regularContent = streamingParsed.regularContent
+    isMarkdown = streamingParsed.isMarkdown || false
   } else {
     const staticParsed = parseMessageContent(message.content)
     thinkingSections = staticParsed.thinkingSections
     regularContent = staticParsed.regularContent
+    isMarkdown = staticParsed.isMarkdown || false
   }
   
   const hasThinking = thinkingSections.length > 0 || (partialThinking && partialThinking.trim())
@@ -356,12 +360,22 @@ function MessageBubble({
                 ? "bg-primary-blue border-primary-blue text-white"
                 : "bg-bg-secondary border-border-primary text-text-primary"
             )}>
-              <div className="whitespace-pre-wrap break-words text-body-medium leading-relaxed">
-                {regularContent || (isStreaming ? "" : message.content)}
-                {isStreaming && !hasThinking && (
-                  <span className="inline-block w-2 h-4 bg-current animate-pulse ml-1 rounded-sm" />
-                )}
-              </div>
+              {/* Render content based on whether it's markdown and if it's a user or assistant message */}
+              {!isUser && isMarkdown && regularContent ? (
+                <div className="text-body-medium leading-relaxed">
+                  <MarkdownRenderer content={regularContent} />
+                  {isStreaming && !hasThinking && (
+                    <span className="inline-block w-2 h-4 bg-current animate-pulse ml-1 rounded-sm" />
+                  )}
+                </div>
+              ) : (
+                <div className="whitespace-pre-wrap break-words text-body-medium leading-relaxed">
+                  {regularContent || (isStreaming ? "" : message.content)}
+                  {isStreaming && !hasThinking && (
+                    <span className="inline-block w-2 h-4 bg-current animate-pulse ml-1 rounded-sm" />
+                  )}
+                </div>
+              )}
               <div className={cn(
                 "text-body-small mt-md opacity-75 flex items-center justify-between",
                 isUser ? "text-blue-100" : "text-text-tertiary"

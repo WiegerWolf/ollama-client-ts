@@ -1,6 +1,7 @@
 export interface ParsedContent {
   thinkingSections: string[]
   regularContent: string
+  isMarkdown?: boolean
 }
 
 /**
@@ -24,9 +25,13 @@ export function parseMessageContent(content: string): ParsedContent {
   // Remove thinking sections from regular content
   regularContent = content.replace(thinkRegex, '').trim()
 
+  // Detect if content should be rendered as markdown
+  const isMarkdown = detectMarkdown(regularContent)
+
   return {
     thinkingSections,
-    regularContent
+    regularContent,
+    isMarkdown
   }
 }
 
@@ -39,6 +44,7 @@ export function parseStreamingContent(content: string): {
   thinkingSections: string[]
   partialThinking: string | null
   regularContent: string
+  isMarkdown?: boolean
 } {
   const thinkingSections: string[] = []
   let regularContent = content
@@ -64,9 +70,43 @@ export function parseStreamingContent(content: string): {
 
   regularContent = regularContent.trim()
 
+  // Detect if content should be rendered as markdown (only for complete content)
+  const isMarkdown = regularContent && !partialThinking ? detectMarkdown(regularContent) : undefined
+
   return {
     thinkingSections,
     partialThinking,
-    regularContent
+    regularContent,
+    isMarkdown
   }
+}
+
+/**
+ * Detects if content contains markdown syntax
+ * @param content The content to analyze
+ * @returns true if markdown syntax is detected
+ */
+function detectMarkdown(content: string): boolean {
+  if (!content || content.trim().length === 0) {
+    return false
+  }
+
+  // Common markdown patterns
+  const markdownPatterns = [
+    /^#{1,6}\s+/m,           // Headers
+    /\*\*.*?\*\*/,           // Bold
+    /\*.*?\*/,               // Italic
+    /`.*?`/,                 // Inline code
+    /```[\s\S]*?```/,        // Code blocks
+    /^\s*[-*+]\s+/m,         // Unordered lists
+    /^\s*\d+\.\s+/m,         // Ordered lists
+    /^\s*>\s+/m,             // Blockquotes
+    /\[.*?\]\(.*?\)/,        // Links
+    /!\[.*?\]\(.*?\)/,       // Images
+    /^\s*\|.*\|.*$/m,        // Tables
+    /^---+$/m,               // Horizontal rules
+    /~~.*?~~/,               // Strikethrough
+  ]
+
+  return markdownPatterns.some(pattern => pattern.test(content))
 }
