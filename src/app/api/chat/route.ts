@@ -100,7 +100,8 @@ export async function POST(request: NextRequest) {
                       conversationId,
                       session.user.id,
                       messages[messages.length - 1], // Last user message
-                      { role: 'assistant', content: assistantMessage }
+                      { role: 'assistant', content: assistantMessage },
+                      model
                     )
                   }
                 } catch (parseError) {
@@ -134,7 +135,8 @@ export async function POST(request: NextRequest) {
           conversationId,
           session.user.id,
           messages[messages.length - 1], // Last user message
-          data.message
+          data.message,
+          model
         )
       }
 
@@ -153,7 +155,8 @@ async function saveMessageToDatabase(
   conversationId: string,
   userId: string,
   userMessage: ChatMessage,
-  assistantMessage: ChatMessage
+  assistantMessage: ChatMessage,
+  model: string
 ) {
   try {
     // Verify the conversation belongs to the user and get current state
@@ -181,14 +184,19 @@ async function saveMessageToDatabase(
     const hasDefaultTitle = conversation.title === 'New Conversation'
     const shouldGenerateTitle = isFirstMessage && hasDefaultTitle && userMessage.content.trim()
 
+    // Check if model has changed from conversation's current model
+    const modelChanged = conversation.currentModel !== model
+    const messageCount = conversation._count.messages
+
     // Execute operations in a transaction
     await prisma.$transaction(async (tx) => {
-      // Save both messages
+      // Save user message with 'user' as model
       await tx.message.create({
         data: {
           conversationId,
           role: userMessage.role,
           content: userMessage.content,
+          model: 'user', // User messages always use 'user' as model
           metadata: userMessage.images || userMessage.tool_calls
             ? JSON.stringify({
                 images: userMessage.images,
@@ -198,16 +206,41 @@ async function saveMessageToDatabase(
         }
       })
 
+      // Save assistant message with the actual model used
       await tx.message.create({
         data: {
           conversationId,
           role: assistantMessage.role,
           content: assistantMessage.content,
+          model: model, // Store the model that generated this response
           metadata: assistantMessage.tool_calls
             ? JSON.stringify({ tool_calls: assistantMessage.tool_calls })
             : null
         }
       })
+
+      // Update conversation's currentModel and record model change if needed
+      if (modelChanged) {
+        await tx.conversation.update({
+          where: { id: conversationId },
+          data: {
+            currentModel: model,
+            updatedAt: new Date()
+          }
+        })
+
+        // Record the model change
+        await tx.modelChange.create({
+          data: {
+            conversationId,
+            fromModel: conversation.currentModel,
+            toModel: model,
+            messageIndex: messageCount + 1 // Position where the change occurred (after user message)
+          }
+        })
+
+        console.log(`Model changed in conversation ${conversationId}: ${conversation.currentModel} -> ${model}`)
+      }
 
       // Update conversation title if this is the first message
       if (shouldGenerateTitle) {

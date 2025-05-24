@@ -1,6 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -23,8 +20,7 @@ model Account {
   scope             String?
   id_token          String?
   session_state     String?
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])
 }
@@ -38,17 +34,17 @@ model Session {
 }
 
 model User {
-  id            String    @id @default(cuid())
+  id            String         @id @default(cuid())
   name          String?
-  email         String?   @unique
+  email         String?        @unique
   emailVerified DateTime?
   image         String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
   accounts      Account[]
-  sessions      Session[]
   conversations Conversation[]
+  sessions      Session[]
   settings      UserSettings?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
 }
 
 model VerificationToken {
@@ -60,37 +56,53 @@ model VerificationToken {
 }
 
 model Conversation {
-  id        String    @id @default(cuid())
-  userId    String
-  title     String
-  model     String
-  settings  String?   // JSON string for conversation-specific settings
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  messages  Message[]
+  id           String        @id @default(cuid())
+  userId       String
+  title        String
+  model        String
+  currentModel String
+  settings     String?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages     Message[]
+  modelChanges ModelChange[]
 }
 
 model Message {
-  id             String   @id @default(cuid())
+  id             String       @id @default(cuid())
   conversationId String
-  role           String   // "system", "user", "assistant", "tool"
+  role           String
   content        String
-  metadata       String?  // JSON string for additional data like images, tool_calls, etc.
-  createdAt      DateTime @default(now())
-  
+  model          String
+  metadata       String?
+  createdAt      DateTime     @default(now())
   conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([model])
+  @@index([conversationId, createdAt])
 }
 
 model UserSettings {
-  id                 String  @id @default(cuid())
-  userId             String  @unique
-  defaultModel       String  @default("llama3.2")
-  defaultTemperature Float?  @default(0.7)
-  ollamaUrl          String  @default("http://localhost:11434")
-  preferences        String? // JSON string for UI preferences (theme, etc.)
+  id                 String   @id @default(cuid())
+  userId             String   @unique
+  defaultModel       String   @default("llama3.2")
+  defaultTemperature Float?   @default(0.7)
+  ollamaUrl          String   @default("http://localhost:11434")
+  preferences        String?
   updatedAt          DateTime @updatedAt
-  
-  user               User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model ModelChange {
+  id             String       @id @default(cuid())
+  conversationId String
+  fromModel      String?
+  toModel        String
+  changedAt      DateTime     @default(now())
+  messageIndex   Int
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, changedAt])
+  @@index([toModel])
 }

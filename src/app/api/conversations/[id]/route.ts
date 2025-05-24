@@ -81,7 +81,7 @@ export async function PUT(
       },
       data: {
         ...(title && { title }),
-        ...(model && { model }),
+        ...(model && { model, currentModel: model }), // Update both model and currentModel
         ...(settings && { settings: JSON.stringify(settings) })
       }
     })

@@ -1,87 +1,96 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { ChevronDown, Check, AlertCircle } from "lucide-react"
+import { ChevronDown, Check, AlertCircle, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useChatStore } from "@/stores/chat-store"
 import { OllamaModel } from "@/lib/ollama-client"
+import { ModelBadge } from "@/components/ui/model-badge"
 
-interface ModelSelectorProps {
-  conversationId?: string
+interface ConversationModelSelectorProps {
+  conversationId: string
+  onModelChange?: (fromModel: string | null, toModel: string) => void
 }
 
-export function ModelSelector({ conversationId }: ModelSelectorProps = {}) {
-  const {
-    models,
-    selectedModel,
-    setModels,
-    setSelectedModel,
-    getConversationModel,
+export function ConversationModelSelector({ 
+  conversationId, 
+  onModelChange 
+}: ConversationModelSelectorProps) {
+  const { 
+    models, 
+    getConversationModel, 
     setConversationModel,
-    currentConversation
+    modelChangeLoading,
+    setModelChangeLoading,
+    currentConversation,
+    updateConversation,
+    addModelChange
   } = useChatStore()
+  
   const [isOpen, setIsOpen] = useState(false)
-  const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Fetch models on component mount
-  useEffect(() => {
-    fetchModels()
-  }, [])
+  const currentModel = getConversationModel(conversationId)
+  const selectedModelData = models.find(model => model.name === currentModel)
 
-  const fetchModels = async () => {
-    setIsLoading(true)
-    setError(null)
+  const handleModelSelect = async (modelName: string) => {
+    if (modelName === currentModel || modelChangeLoading) return
     
+    setIsOpen(false)
+    setError(null)
+    setModelChangeLoading(true)
+
     try {
-      const response = await fetch('/api/models')
-      
+      // Call the API to update the conversation model
+      const response = await fetch(`/api/conversations/${conversationId}/model`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ model: modelName }),
+      })
+
       if (!response.ok) {
-        throw new Error('Failed to fetch models')
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to update model')
       }
-      
+
       const data = await response.json()
       
-      if (data.error) {
-        throw new Error(data.error)
-      }
+      // Update local state
+      const previousModel = currentModel
+      setConversationModel(conversationId, modelName)
       
-      const modelList: OllamaModel[] = data.models || []
-      setModels(modelList)
-      
-      // If no model is selected and we have models, select the first one
-      if (!selectedModel && modelList.length > 0) {
-        setSelectedModel(modelList[0].name)
+      // Update conversation in store
+      if (currentConversation?.id === conversationId) {
+        updateConversation(conversationId, { 
+          currentModel: modelName,
+          updatedAt: new Date().toISOString()
+        })
       }
+
+      // Add model change to history
+      if (data.modelChange) {
+        addModelChange(conversationId, {
+          conversationId,
+          fromModel: data.modelChange.from,
+          toModel: data.modelChange.to,
+          changedAt: new Date().toISOString(),
+          messageIndex: currentConversation?.messages.length || 0
+        })
+      }
+
+      // Notify parent component
+      onModelChange?.(previousModel, modelName)
+      
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error'
       setError(errorMessage)
-      console.error('Error fetching models:', err)
+      console.error('Error updating conversation model:', err)
     } finally {
-      setIsLoading(false)
+      setModelChangeLoading(false)
     }
   }
-
-  const handleModelSelect = (modelName: string) => {
-    if (conversationId || currentConversation) {
-      // If we're in a conversation context, update the conversation model
-      const targetConversationId = conversationId || currentConversation?.id
-      if (targetConversationId) {
-        setConversationModel(targetConversationId, modelName)
-      }
-    } else {
-      // Otherwise, update the global selected model
-      setSelectedModel(modelName)
-    }
-    setIsOpen(false)
-  }
-
-  // Get the appropriate model based on context
-  const currentModel = (conversationId || currentConversation)
-    ? getConversationModel(conversationId || currentConversation?.id || '')
-    : selectedModel
-    
-  const selectedModelData = models.find(model => model.name === currentModel)
 
   if (error) {
     return (
@@ -92,32 +101,31 @@ export function ModelSelector({ conversationId }: ModelSelectorProps = {}) {
     )
   }
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center space-xs">
-        <div className="w-4 h-4 border-2 border-primary-blue border-t-transparent rounded-full animate-spin" />
-        <span className="text-body-small text-text-secondary">Loading models...</span>
-      </div>
-    )
-  }
-
   return (
     <div className="relative">
       <Button
         variant="ghost"
         onClick={() => setIsOpen(!isOpen)}
+        disabled={modelChangeLoading}
         className="flex items-center space-xs px-md py-xs h-auto bg-bg-secondary border border-border-primary hover:bg-bg-tertiary focus-ring"
-        aria-label="Select model"
+        aria-label="Change conversation model"
         aria-expanded={isOpen}
         aria-haspopup="listbox"
       >
-        <span className="text-body-medium text-text-primary">
-          {selectedModelData?.name || currentModel || 'No model'}
-        </span>
-        <ChevronDown className={`h-4 w-4 text-text-secondary transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+        {modelChangeLoading ? (
+          <>
+            <Loader2 className="h-4 w-4 animate-spin text-text-secondary" />
+            <span className="text-body-small text-text-secondary">Switching...</span>
+          </>
+        ) : (
+          <>
+            <ModelBadge model={currentModel} size="sm" variant="compact" />
+            <ChevronDown className={`h-4 w-4 text-text-secondary transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+          </>
+        )}
       </Button>
 
-      {isOpen && (
+      {isOpen && !modelChangeLoading && (
         <>
           {/* Backdrop */}
           <div 
@@ -127,18 +135,10 @@ export function ModelSelector({ conversationId }: ModelSelectorProps = {}) {
           />
           
           {/* Dropdown */}
-          <div className="absolute top-full left-0 mt-xs min-w-[200px] max-w-[300px] bg-bg-primary border border-border-primary rounded-lg shadow-elevated z-50 max-h-[300px] overflow-y-auto">
+          <div className="absolute top-full right-0 mt-xs min-w-[200px] max-w-[300px] bg-bg-primary border border-border-primary rounded-lg shadow-elevated z-50 max-h-[300px] overflow-y-auto">
             {models.length === 0 ? (
               <div className="p-md text-center">
                 <p className="text-body-medium text-text-secondary">No models available</p>
-                <Button
-                  variant="link"
-                  size="sm"
-                  onClick={fetchModels}
-                  className="mt-xs"
-                >
-                  Retry
-                </Button>
               </div>
             ) : (
               <div role="listbox" aria-label="Available models">

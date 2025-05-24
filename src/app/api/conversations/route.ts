@@ -72,6 +72,7 @@ export async function POST(request: NextRequest) {
         userId: session.user.id,
         title: conversationTitle,
         model,
+        currentModel: model, // Set currentModel to the initial model
         settings: settings ? JSON.stringify(settings) : null
       }
     })

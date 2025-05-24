@@ -7,6 +7,9 @@ import { useChatStore } from "@/stores/chat-store"
 import { ChatMessage } from "@/lib/ollama-client"
 import { formatRelativeTime } from "@/lib/utils"
 import { cn } from "@/lib/utils"
+import { ConversationModelSelector } from "./conversation-model-selector"
+import { ModelChangeNotification } from "@/components/ui/model-change-notification"
+import { ModelBadge } from "@/components/ui/model-badge"
 
 interface Message {
   id: string
@@ -19,6 +22,7 @@ export function ChatInterface() {
   const {
     currentConversation,
     selectedModel,
+    getConversationModel,
     temperature,
     systemPrompt,
     isStreaming,
@@ -30,6 +34,11 @@ export function ChatInterface() {
   const [input, setInput] = useState("")
   const [streamingMessage, setStreamingMessage] = useState("")
   const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null)
+  const [modelChangeNotification, setModelChangeNotification] = useState<{
+    fromModel: string | null
+    toModel: string
+    isVisible: boolean
+  } | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
@@ -40,6 +49,18 @@ export function ChatInterface() {
   useEffect(() => {
     scrollToBottom()
   }, [currentConversation?.messages, streamingMessage])
+
+  const handleModelChange = (fromModel: string | null, toModel: string) => {
+    setModelChangeNotification({
+      fromModel,
+      toModel,
+      isVisible: true
+    })
+  }
+
+  const closeModelChangeNotification = () => {
+    setModelChangeNotification(prev => prev ? { ...prev, isVisible: false } : null)
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -80,7 +101,7 @@ export function ChatInterface() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: selectedModel,
+          model: getConversationModel(currentConversation.id),
           messages,
           conversationId: currentConversation.id,
           temperature,
@@ -170,12 +191,34 @@ export function ChatInterface() {
 
   return (
     <div className="flex-1 flex flex-col bg-bg-primary h-full">
+      {/* Header with Model Selector */}
+      <div className="border-b border-border-primary bg-bg-primary px-2xl py-md">
+        <div className="max-w-[800px] mx-auto flex items-center justify-between">
+          <div className="flex items-center space-md">
+            <h1 className="text-heading-medium text-text-primary font-semibold">
+              {currentConversation.title}
+            </h1>
+          </div>
+          <div className="flex items-center space-md">
+            <span className="text-body-small text-text-secondary">Model:</span>
+            <ConversationModelSelector
+              conversationId={currentConversation.id}
+              onModelChange={handleModelChange}
+            />
+          </div>
+        </div>
+      </div>
+
       {/* Messages Container */}
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-[800px] mx-auto px-2xl py-lg">
           <div className="space-y-lg">
             {currentConversation.messages.map((message) => (
-              <MessageBubble key={message.id} message={message} />
+              <MessageBubble
+                key={message.id}
+                message={message}
+                conversationId={currentConversation.id}
+              />
             ))}
             
             {/* Streaming message */}
@@ -185,8 +228,10 @@ export function ChatInterface() {
                   id: streamingMessageId || 'streaming',
                   role: 'assistant',
                   content: streamingMessage,
-                  createdAt: new Date().toISOString()
+                  createdAt: new Date().toISOString(),
+                  model: getConversationModel(currentConversation.id)
                 }}
+                conversationId={currentConversation.id}
                 isStreaming={true}
               />
             )}
@@ -224,18 +269,32 @@ export function ChatInterface() {
           </form>
         </div>
       </div>
+
+      {/* Model Change Notification */}
+      {modelChangeNotification && (
+        <ModelChangeNotification
+          fromModel={modelChangeNotification.fromModel}
+          toModel={modelChangeNotification.toModel}
+          isVisible={modelChangeNotification.isVisible}
+          onClose={closeModelChangeNotification}
+        />
+      )}
     </div>
   )
 }
 
 function MessageBubble({
   message,
+  conversationId,
   isStreaming = false
 }: {
-  message: Message
+  message: Message & { model?: string }
+  conversationId?: string
   isStreaming?: boolean
 }) {
+  const { getConversationModel } = useChatStore()
   const isUser = message.role === 'user'
+  const messageModel = message.model || (conversationId ? getConversationModel(conversationId) : undefined)
   
   return (
     <div className={cn("flex", isUser ? "justify-end" : "justify-start")}>
@@ -245,12 +304,18 @@ function MessageBubble({
       )}>
         {/* Avatar */}
         <div className={cn(
-          "flex h-10 w-10 shrink-0 select-none items-center justify-center rounded-full border-2 shadow-sm",
+          "flex h-10 w-10 shrink-0 select-none items-center justify-center rounded-full border-2 shadow-sm relative",
           isUser
             ? "bg-primary-blue border-primary-blue text-white"
             : "bg-bg-secondary border-border-primary text-text-secondary"
         )}>
           {isUser ? <User className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
+          {/* Model indicator dot for assistant messages */}
+          {!isUser && messageModel && (
+            <div className="absolute -bottom-1 -right-1">
+              <ModelBadge model={messageModel} variant="dot" size="sm" />
+            </div>
+          )}
         </div>
 
         {/* Message */}
@@ -267,10 +332,19 @@ function MessageBubble({
             )}
           </div>
           <div className={cn(
-            "text-body-small mt-md opacity-75",
+            "text-body-small mt-md opacity-75 flex items-center justify-between",
             isUser ? "text-blue-100" : "text-text-tertiary"
           )}>
-            {formatRelativeTime(message.createdAt)}
+            <span>{formatRelativeTime(message.createdAt)}</span>
+            {/* Model badge for assistant messages */}
+            {!isUser && messageModel && (
+              <ModelBadge
+                model={messageModel}
+                size="sm"
+                variant="compact"
+                className="ml-md"
+              />
+            )}
           </div>
         </div>
       </div>

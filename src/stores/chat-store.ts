@@ -1,14 +1,25 @@
 import { create } from 'zustand'
 import { ChatMessage, OllamaModel } from '@/lib/ollama-client'
 
+interface ModelChange {
+  id: string
+  conversationId: string
+  fromModel: string | null
+  toModel: string
+  changedAt: string
+  messageIndex: number
+}
+
 interface Conversation {
   id: string
   title: string
   model: string
+  currentModel: string
   settings?: any
   createdAt: string
   updatedAt: string
   messages: Message[]
+  modelChanges?: ModelChange[]
   _count?: {
     messages: number
   }
@@ -19,6 +30,7 @@ interface Message {
   conversationId: string
   role: string
   content: string
+  model?: string
   metadata?: string
   createdAt: string
 }
@@ -32,11 +44,16 @@ interface ChatState {
   models: OllamaModel[]
   selectedModel: string
   
+  // Per-conversation model tracking
+  conversationModels: Record<string, string>
+  modelChangeHistory: Record<string, ModelChange[]>
+  
   // UI state
   isLoading: boolean
   isStreaming: boolean
   sidebarOpen: boolean
   settingsPanelOpen: boolean
+  modelChangeLoading: boolean
   
   // Search state
   searchQuery: string
@@ -59,10 +76,17 @@ interface ChatState {
   setModels: (models: OllamaModel[]) => void
   setSelectedModel: (model: string) => void
   
+  // Per-conversation model actions
+  setConversationModel: (conversationId: string, model: string) => void
+  getConversationModel: (conversationId: string) => string
+  addModelChange: (conversationId: string, change: Omit<ModelChange, 'id'>) => void
+  loadConversationModelData: (conversationId: string) => Promise<void>
+  
   setIsLoading: (loading: boolean) => void
   setIsStreaming: (streaming: boolean) => void
   setSidebarOpen: (open: boolean) => void
   setSettingsPanelOpen: (open: boolean) => void
+  setModelChangeLoading: (loading: boolean) => void
   
   // Search actions
   setSearchQuery: (query: string) => void
@@ -78,7 +102,7 @@ interface ChatState {
   setSettingsLoading: (loading: boolean) => void
   
   // Message actions
-  addMessage: (conversationId: string, message: Omit<Message, 'id' | 'createdAt'>) => void
+  addMessage: (conversationId: string, message: Omit<Message, 'id' | 'createdAt' | 'model'> & { model?: string }) => void
   updateMessage: (conversationId: string, messageId: string, content: string) => void
 }
 
@@ -88,10 +112,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
   conversations: [],
   models: [],
   selectedModel: 'llama3.2',
+  conversationModels: {},
+  modelChangeHistory: {},
   isLoading: false,
   isStreaming: false,
   sidebarOpen: true,
   settingsPanelOpen: false,
+  modelChangeLoading: false,
   searchQuery: '',
   filteredConversations: [],
   temperature: 0.7,
@@ -101,8 +128,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
   settingsLoading: false,
 
   // Actions
-  setCurrentConversation: (conversation) => 
-    set({ currentConversation: conversation }),
+  setCurrentConversation: (conversation) => {
+    set({ currentConversation: conversation })
+    // Load model data when switching conversations
+    if (conversation) {
+      get().loadConversationModelData(conversation.id)
+    }
+  },
 
   setConversations: (conversations) => {
     set({ conversations })
@@ -135,8 +167,68 @@ export const useChatStore = create<ChatState>((set, get) => ({
   setModels: (models) => 
     set({ models }),
 
-  setSelectedModel: (model) => 
+  setSelectedModel: (model) =>
     set({ selectedModel: model }),
+
+  // Per-conversation model actions
+  setConversationModel: (conversationId, model) =>
+    set((state) => ({
+      conversationModels: {
+        ...state.conversationModels,
+        [conversationId]: model
+      }
+    })),
+
+  getConversationModel: (conversationId) => {
+    const state = get()
+    return state.conversationModels[conversationId] ||
+           state.currentConversation?.currentModel ||
+           state.selectedModel
+  },
+
+  addModelChange: (conversationId, change) =>
+    set((state) => {
+      const newChange: ModelChange = {
+        ...change,
+        id: Math.random().toString(36).substr(2, 9)
+      }
+      
+      return {
+        modelChangeHistory: {
+          ...state.modelChangeHistory,
+          [conversationId]: [
+            ...(state.modelChangeHistory[conversationId] || []),
+            newChange
+          ]
+        }
+      }
+    }),
+
+  loadConversationModelData: async (conversationId) => {
+    try {
+      const response = await fetch(`/api/conversations/${conversationId}`)
+      if (response.ok) {
+        const conversation = await response.json()
+        
+        // Update conversation model tracking
+        if (conversation.currentModel) {
+          get().setConversationModel(conversationId, conversation.currentModel)
+        }
+        
+        // Load model change history
+        if (conversation.modelChanges) {
+          set((state) => ({
+            modelChangeHistory: {
+              ...state.modelChangeHistory,
+              [conversationId]: conversation.modelChanges
+            }
+          }))
+        }
+      }
+    } catch (error) {
+      console.error('Error loading conversation model data:', error)
+    }
+  },
 
   setIsLoading: (loading) => 
     set({ isLoading: loading }),
@@ -149,6 +241,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   setSettingsPanelOpen: (open) =>
     set({ settingsPanelOpen: open }),
+
+  setModelChangeLoading: (loading) =>
+    set({ modelChangeLoading: loading }),
 
   setTemperature: (temperature) =>
     set({ temperature }),
@@ -236,9 +331,15 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   addMessage: (conversationId, message) =>
     set((state) => {
+      // Get the current model for this conversation
+      const currentModel = state.conversationModels[conversationId] ||
+                          state.currentConversation?.currentModel ||
+                          state.selectedModel
+
       const newMessage: Message = {
         ...message,
         id: Math.random().toString(36).substr(2, 9),
+        model: message.model || currentModel,
         createdAt: new Date().toISOString()
       }
 
