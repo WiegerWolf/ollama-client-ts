@@ -34,19 +34,24 @@ export function ModelSelector({ conversationId }: ModelSelectorProps = {}) {
     setError(null)
     
     try {
+      console.log('Fetching models from /api/models...')
       const response = await fetch('/api/models')
       
       if (!response.ok) {
+        console.error('Response not OK:', response.status, response.statusText)
         throw new Error('Failed to fetch models')
       }
       
       const data = await response.json()
+      console.log('Frontend received data:', JSON.stringify(data, null, 2))
       
       if (data.error) {
+        console.error('API returned error:', data.error)
         throw new Error(data.error)
       }
       
       const modelList: OllamaModel[] = data.models || []
+      console.log('Processed model list:', modelList.length, 'models')
       setModels(modelList)
       
       // If no model is selected and we have models, select the first one

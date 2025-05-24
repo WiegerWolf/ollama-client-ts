@@ -16,9 +16,10 @@ export function ConversationModelSelector({
   conversationId, 
   onModelChange 
 }: ConversationModelSelectorProps) {
-  const { 
-    models, 
-    getConversationModel, 
+  const {
+    models,
+    setModels,
+    getConversationModel,
     setConversationModel,
     modelChangeLoading,
     setModelChangeLoading,
@@ -29,6 +30,41 @@ export function ConversationModelSelector({
   
   const [isOpen, setIsOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [isLoadingModels, setIsLoadingModels] = useState(false)
+
+  // Fetch models on component mount if not already loaded
+  useEffect(() => {
+    if (models.length === 0) {
+      fetchModels()
+    }
+  }, [models.length])
+
+  const fetchModels = async () => {
+    setIsLoadingModels(true)
+    setError(null)
+    
+    try {
+      const response = await fetch('/api/models')
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch models')
+      }
+      
+      const data = await response.json()
+      
+      if (data.error) {
+        throw new Error(data.error)
+      }
+      
+      const modelList: OllamaModel[] = data.models || []
+      setModels(modelList)
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error'
+      setError(errorMessage)
+    } finally {
+      setIsLoadingModels(false)
+    }
+  }
 
   const currentModel = getConversationModel(conversationId)
   const selectedModelData = models.find(model => model.name === currentModel)
@@ -136,9 +172,24 @@ export function ConversationModelSelector({
           
           {/* Dropdown */}
           <div className="absolute top-full right-0 mt-xs min-w-[200px] max-w-[300px] bg-bg-primary border border-border-primary rounded-lg shadow-elevated z-50 max-h-[300px] overflow-y-auto">
-            {models.length === 0 ? (
+            {isLoadingModels ? (
+              <div className="p-md text-center">
+                <div className="flex items-center justify-center space-xs">
+                  <Loader2 className="h-4 w-4 animate-spin text-text-secondary" />
+                  <span className="text-body-small text-text-secondary">Loading models...</span>
+                </div>
+              </div>
+            ) : models.length === 0 ? (
               <div className="p-md text-center">
                 <p className="text-body-medium text-text-secondary">No models available</p>
+                <Button
+                  variant="link"
+                  size="sm"
+                  onClick={fetchModels}
+                  className="mt-xs"
+                >
+                  Retry
+                </Button>
               </div>
             ) : (
               <div role="listbox" aria-label="Available models">
