@@ -1,11 +1,12 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Plus, MessageSquare, Trash2 } from "lucide-react"
+import { Plus, MessageSquare, Trash2, Settings, User } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useChatStore } from "@/stores/chat-store"
 import { formatRelativeTime, generateConversationTitle } from "@/lib/utils"
 import { cn } from "@/lib/utils"
+import { useSession } from "next-auth/react"
 
 interface Conversation {
   id: string
@@ -18,6 +19,13 @@ interface Conversation {
   }
 }
 
+interface GroupedConversations {
+  today: Conversation[]
+  yesterday: Conversation[]
+  thisWeek: Conversation[]
+  older: Conversation[]
+}
+
 export function Sidebar() {
   const {
     conversations,
@@ -28,6 +36,7 @@ export function Sidebar() {
     selectedModel
   } = useChatStore()
   
+  const { data: session } = useSession()
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
@@ -102,66 +111,153 @@ export function Sidebar() {
     }
   }
 
+  const groupConversationsByDate = (conversations: Conversation[]): GroupedConversations => {
+    const now = new Date()
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+    const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000)
+    const thisWeekStart = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000)
+
+    return conversations.reduce(
+      (groups, conversation) => {
+        const conversationDate = new Date(conversation.updatedAt)
+        const conversationDay = new Date(conversationDate.getFullYear(), conversationDate.getMonth(), conversationDate.getDate())
+
+        if (conversationDay.getTime() === today.getTime()) {
+          groups.today.push(conversation)
+        } else if (conversationDay.getTime() === yesterday.getTime()) {
+          groups.yesterday.push(conversation)
+        } else if (conversationDay.getTime() >= thisWeekStart.getTime()) {
+          groups.thisWeek.push(conversation)
+        } else {
+          groups.older.push(conversation)
+        }
+
+        return groups
+      },
+      { today: [], yesterday: [], thisWeek: [], older: [] } as GroupedConversations
+    )
+  }
+
+  const groupedConversations = groupConversationsByDate(conversations)
+
+  const renderConversationGroup = (title: string, conversations: Conversation[]) => {
+    if (conversations.length === 0) return null
+
+    return (
+      <div className="mb-lg">
+        <h3 className="text-body-small text-tertiary font-medium px-lg mb-sm uppercase tracking-wide">
+          {title}
+        </h3>
+        <div className="px-lg space-y-xs">
+          {conversations.map((conversation) => (
+            <div
+              key={conversation.id}
+              onClick={() => selectConversation(conversation)}
+              className={cn(
+                "group flex items-center justify-between p-md rounded-lg cursor-pointer transition-layout hover:bg-secondary",
+                currentConversation?.id === conversation.id && "bg-secondary"
+              )}
+            >
+              <div className="flex items-center space-md flex-1 min-w-0">
+                <MessageSquare className="h-4 w-4 text-secondary flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-body-medium text-primary font-medium truncate">
+                    {conversation.title}
+                  </p>
+                  <p className="text-body-small text-secondary">
+                    {formatRelativeTime(conversation.updatedAt)} • {conversation.model}
+                  </p>
+                </div>
+              </div>
+              
+              <Button
+                variant="ghost"
+                size="icon"
+                className="opacity-0 group-hover:opacity-100 h-6 w-6 transition-fast"
+                onClick={(e) => handleDeleteConversation(conversation.id, e)}
+                aria-label={`Delete conversation: ${conversation.title}`}
+              >
+                <Trash2 className="h-3 w-3" />
+              </Button>
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
   return (
-    <div className="h-full bg-gray-100 dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col">
-      {/* Header */}
-      <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+    <div className="h-full bg-tertiary border-r border-primary flex flex-col">
+      {/* Header Section */}
+      <div className="p-lg">
         <Button
           onClick={createNewConversation}
-          className="w-full justify-start"
-          variant="outline"
+          className="w-full justify-start h-11"
+          variant="default"
         >
           <Plus className="h-4 w-4 mr-2" />
           New Conversation
         </Button>
       </div>
 
-      {/* Conversations List */}
+      {/* Conversation List Section */}
       <div className="flex-1 overflow-y-auto">
         {isLoading ? (
-          <div className="p-4 text-center text-gray-500">
-            Loading conversations...
-          </div>
-        ) : conversations.length === 0 ? (
-          <div className="p-4 text-center text-gray-500">
-            No conversations yet
-          </div>
-        ) : (
-          <div className="p-2">
-            {conversations.map((conversation) => (
-              <div
-                key={conversation.id}
-                onClick={() => selectConversation(conversation)}
-                className={cn(
-                  "group flex items-center justify-between p-3 rounded-lg cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-700 mb-1",
-                  currentConversation?.id === conversation.id &&
-                    "bg-gray-200 dark:bg-gray-700"
-                )}
-              >
-                <div className="flex items-center space-x-3 flex-1 min-w-0">
-                  <MessageSquare className="h-4 w-4 text-gray-500 flex-shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
-                      {conversation.title}
-                    </p>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">
-                      {formatRelativeTime(conversation.updatedAt)} • {conversation.model}
-                    </p>
-                  </div>
+          <div className="p-lg">
+            {/* Loading skeleton */}
+            {[...Array(6)].map((_, i) => (
+              <div key={i} className="flex items-center space-md p-md mb-xs">
+                <div className="w-4 h-4 bg-secondary rounded animate-pulse" />
+                <div className="flex-1">
+                  <div className="w-3/4 h-4 bg-secondary rounded animate-pulse mb-xs" />
+                  <div className="w-1/2 h-3 bg-secondary rounded animate-pulse" />
                 </div>
-                
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="opacity-0 group-hover:opacity-100 h-6 w-6"
-                  onClick={(e) => handleDeleteConversation(conversation.id, e)}
-                >
-                  <Trash2 className="h-3 w-3" />
-                </Button>
               </div>
             ))}
           </div>
+        ) : conversations.length === 0 ? (
+          <div className="p-lg text-center text-secondary">
+            <MessageSquare className="h-8 w-8 mx-auto mb-md text-tertiary" />
+            <p className="text-body-medium">No conversations yet</p>
+            <p className="text-body-small text-tertiary mt-xs">
+              Create your first conversation to get started
+            </p>
+          </div>
+        ) : (
+          <div className="py-sm">
+            {renderConversationGroup("Today", groupedConversations.today)}
+            {renderConversationGroup("Yesterday", groupedConversations.yesterday)}
+            {renderConversationGroup("This Week", groupedConversations.thisWeek)}
+            {renderConversationGroup("Older", groupedConversations.older)}
+          </div>
         )}
+      </div>
+
+      {/* Footer Section */}
+      <div className="border-t border-primary p-lg bg-tertiary">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-md">
+            <div className="w-8 h-8 bg-secondary rounded-full flex items-center justify-center">
+              <User className="h-4 w-4 text-secondary" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-body-small text-primary font-medium truncate">
+                {session?.user?.name || session?.user?.email || 'User'}
+              </p>
+              <p className="text-body-small text-tertiary">
+                {session?.user?.email && session?.user?.name ? session.user.email : 'Signed in'}
+              </p>
+            </div>
+          </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="w-8 h-8"
+            aria-label="Settings"
+          >
+            <Settings className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
     </div>
   )

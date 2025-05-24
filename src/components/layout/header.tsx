@@ -1,6 +1,6 @@
 "use client"
 
-import { Menu, Settings, User } from "lucide-react"
+import { Menu, X, Settings, User, LogOut } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useChatStore } from "@/stores/chat-store"
 import { useSession, signOut } from "next-auth/react"
@@ -10,47 +10,59 @@ export function Header() {
   const { data: session } = useSession()
 
   return (
-    <header className="border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-3">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-4">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setSidebarOpen(!sidebarOpen)}
-          >
-            <Menu className="h-5 w-5" />
-          </Button>
-          
-          <div className="flex items-center space-x-2">
-            <h1 className="text-lg font-semibold text-gray-900 dark:text-white">
-              Ollama Chat
-            </h1>
-            {selectedModel && (
-              <span className="text-sm text-gray-500 dark:text-gray-400">
-                • {selectedModel}
-              </span>
-            )}
-          </div>
-        </div>
+    <header className="bg-primary border-b border-primary h-[60px] px-lg flex items-center justify-between">
+      {/* Left Section */}
+      <div className="flex items-center">
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => setSidebarOpen(!sidebarOpen)}
+          className="w-10 h-10 mr-lg"
+          aria-label={sidebarOpen ? "Close sidebar" : "Open sidebar"}
+        >
+          {sidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+        </Button>
+        
+        <h1 className="text-heading-medium text-primary font-semibold mr-md">
+          Ollama Chat
+        </h1>
+        
+        {selectedModel && (
+          <span className="text-body-medium text-secondary">
+            Model: {selectedModel}
+          </span>
+        )}
+      </div>
 
-        <div className="flex items-center space-x-2">
-          <Button variant="ghost" size="icon">
-            <Settings className="h-5 w-5" />
-          </Button>
-          
-          <div className="flex items-center space-x-2">
-            <span className="text-sm text-gray-700 dark:text-gray-300">
-              {session?.user?.name || session?.user?.email}
-            </span>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => signOut()}
-            >
-              <User className="h-5 w-5" />
-            </Button>
-          </div>
-        </div>
+      {/* Right Section */}
+      <div className="flex items-center">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="w-10 h-10 ml-sm"
+          aria-label="Settings"
+        >
+          <Settings className="h-5 w-5" />
+        </Button>
+        
+        <Button
+          variant="ghost"
+          size="icon"
+          className="w-10 h-10 ml-sm"
+          aria-label={`User menu for ${session?.user?.name || session?.user?.email}`}
+        >
+          <User className="h-5 w-5" />
+        </Button>
+        
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => signOut()}
+          className="w-10 h-10 ml-sm"
+          aria-label="Sign out"
+        >
+          <LogOut className="h-5 w-5" />
+        </Button>
       </div>
     </header>
   )
