@@ -1,7 +1,5 @@
 import { NextAuthOptions } from "next-auth"
-import { PrismaAdapter } from "@next-auth/prisma-adapter"
 import CredentialsProvider from "next-auth/providers/credentials"
-import { prisma } from "./db"
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -27,20 +25,10 @@ export const authOptions: NextAuthOptions = {
   session: {
     strategy: "jwt",
   },
-  jwt: {
-    encode: async ({ secret, token }) => {
-      const jwt = require('jsonwebtoken')
-      return jwt.sign(token, secret, { algorithm: 'HS256' })
-    },
-    decode: async ({ secret, token }) => {
-      const jwt = require('jsonwebtoken')
-      return jwt.verify(token, secret, { algorithms: ['HS256'] })
-    },
-  },
   callbacks: {
     session: async ({ session, token }) => {
-      if (session?.user && token?.sub) {
-        session.user.id = token.sub
+      if (session?.user && token?.uid) {
+        session.user.id = token.uid as string
       }
       return session
     },
@@ -54,4 +42,5 @@ export const authOptions: NextAuthOptions = {
   pages: {
     signIn: "/auth/signin",
   },
+  secret: process.env.NEXTAUTH_SECRET,
 }
