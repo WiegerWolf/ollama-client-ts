@@ -6,14 +6,6 @@ import { mockConversations, mockModels, mockUserSettings } from '../../mocks/dat
 const mockFetch = jest.fn()
 global.fetch = mockFetch
 
-// Mock window.history
-Object.defineProperty(window, 'history', {
-  value: {
-    pushState: jest.fn(),
-  },
-  writable: true,
-})
-
 describe('useChatStore', () => {
   beforeEach(() => {
     // Reset the store state before each test

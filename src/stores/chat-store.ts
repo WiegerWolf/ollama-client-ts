@@ -249,16 +249,16 @@ export const useChatStore = create<ChatState>((set, get) => ({
   loadConversationModelData: async (conversationId) => {
     try {
       const response = await fetch(`/api/conversations/${conversationId}`)
-      if (response.ok) {
+      if (response && response.ok) {
         const conversation = await response.json()
         
         // Update conversation model tracking
-        if (conversation.currentModel) {
+        if (conversation && conversation.currentModel) {
           get().setConversationModel(conversationId, conversation.currentModel)
         }
         
         // Load model change history
-        if (conversation.modelChanges) {
+        if (conversation && conversation.modelChanges) {
           set((state) => ({
             modelChangeHistory: {
               ...state.modelChangeHistory,

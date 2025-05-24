@@ -10,8 +10,19 @@ const customJestConfig = {
   setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],
   testEnvironment: 'jsdom',
   testPathIgnorePatterns: ['<rootDir>/.next/', '<rootDir>/node_modules/', '<rootDir>/tests/e2e/'],
-  moduleNameMapping: {
+  moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/src/$1',
+  },
+  // Transform ES modules that Jest can't handle by default
+  transformIgnorePatterns: [
+    'node_modules/(?!(next-auth|@auth|react-markdown|remark-gfm|micromark|decode-named-character-reference|character-entities|unist-util-|mdast-util-|ccount|escape-string-regexp|markdown-table)/)'
+  ],
+  // Handle ES modules properly
+  extensionsToTreatAsEsm: ['.ts', '.tsx'],
+  globals: {
+    'ts-jest': {
+      useESM: true
+    }
   },
   collectCoverageFrom: [
     'src/**/*.{js,jsx,ts,tsx}',

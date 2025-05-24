@@ -48,3 +48,7 @@ next-env.d.ts
 
 # Prisma
 /prisma/migrations/*/migration.sql
+
+# tests artifacts
+/playwright-report
+/test-results
