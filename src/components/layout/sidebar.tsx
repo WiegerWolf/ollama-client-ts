@@ -237,28 +237,18 @@ export function Sidebar() {
 
       {/* Footer Section */}
       <div className="border-t border-border-primary p-lg bg-bg-secondary">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-md">
-            <div className="w-9 h-9 bg-primary-blue rounded-full flex items-center justify-center border-2 border-primary-blue">
-              <User className="h-4 w-4 text-white" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-body-small text-text-primary font-medium truncate">
-                {session?.user?.name || session?.user?.email || 'User'}
-              </p>
-              <p className="text-body-small text-text-tertiary">
-                {session?.user?.email && session?.user?.name ? session.user.email : 'Signed in'}
-              </p>
-            </div>
+        <div className="flex items-center space-md">
+          <div className="w-9 h-9 bg-primary-blue rounded-full flex items-center justify-center border-2 border-primary-blue">
+            <User className="h-4 w-4 text-white" />
           </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="w-8 h-8 focus-ring"
-            aria-label="Settings"
-          >
-            <Settings className="h-4 w-4" />
-          </Button>
+          <div className="flex-1 min-w-0">
+            <p className="text-body-small text-text-primary font-medium truncate">
+              {session?.user?.name || session?.user?.email || 'User'}
+            </p>
+            <p className="text-body-small text-text-tertiary">
+              {session?.user?.email && session?.user?.name ? session.user.email : 'Signed in'}
+            </p>
+          </div>
         </div>
       </div>
     </div>
