@@ -1,7 +1,10 @@
-import { NextAuthOptions } from "next-auth"
+import NextAuth from "next-auth"
+import { PrismaAdapter } from "@auth/prisma-adapter"
 import CredentialsProvider from "next-auth/providers/credentials"
+import { prisma } from "@/lib/db"
 
-export const authOptions: NextAuthOptions = {
+export const { handlers, auth, signIn, signOut } = NextAuth({
+  adapter: PrismaAdapter(prisma),
   providers: [
     CredentialsProvider({
       name: "credentials",
@@ -12,10 +15,25 @@ export const authOptions: NextAuthOptions = {
       async authorize(credentials) {
         // This is a demo implementation - in production, verify credentials properly
         if (credentials?.email === "guest@example.com" && credentials?.password === "guest") {
+          // Check if guest user exists, create if not
+          let user = await prisma.user.findUnique({
+            where: { email: "guest@example.com" }
+          })
+
+          if (!user) {
+            user = await prisma.user.create({
+              data: {
+                id: "guest-user",
+                email: "guest@example.com",
+                name: "Guest User",
+              }
+            })
+          }
+
           return {
-            id: "guest-user",
-            email: "guest@example.com",
-            name: "Guest User",
+            id: user.id,
+            email: user.email,
+            name: user.name,
           }
         }
         return null
@@ -27,14 +45,14 @@ export const authOptions: NextAuthOptions = {
   },
   callbacks: {
     session: async ({ session, token }) => {
-      if (session?.user && token?.uid) {
-        session.user.id = token.uid as string
+      if (session?.user && token?.sub) {
+        session.user.id = token.sub
       }
       return session
     },
     jwt: async ({ user, token }) => {
       if (user) {
-        token.uid = user.id
+        token.sub = user.id
       }
       return token
     },
@@ -42,5 +60,5 @@ export const authOptions: NextAuthOptions = {
   pages: {
     signIn: "/auth/signin",
   },
-  secret: process.env.NEXTAUTH_SECRET,
-}
+  secret: process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET,
+})
