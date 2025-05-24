@@ -2,6 +2,7 @@
 
 import { ReactNode } from "react"
 import { useChatStore } from "@/stores/chat-store"
+import { SettingsPanel } from "@/components/layout/settings-panel"
 
 interface MainLayoutProps {
   header: ReactNode
@@ -11,7 +12,7 @@ interface MainLayoutProps {
 }
 
 export function MainLayout({ header, sidebar, chat }: MainLayoutProps) {
-  const { sidebarOpen } = useChatStore()
+  const { sidebarOpen, settingsPanelOpen } = useChatStore()
 
   return (
     <div className="main-grid-layout">
@@ -30,9 +31,9 @@ export function MainLayout({ header, sidebar, chat }: MainLayoutProps) {
         {chat}
       </main>
 
-      {/* Settings Area - Hidden for now, prepared for future */}
-      <div className="main-grid-settings">
-        {/* Future settings panel */}
+      {/* Settings Area */}
+      <div className={`main-grid-settings ${settingsPanelOpen ? 'settings-panel-open' : 'settings-panel-closed'}`}>
+        <SettingsPanel />
       </div>
 
       {/* Input Area - Prepared for future */}

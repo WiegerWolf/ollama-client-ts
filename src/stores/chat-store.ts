@@ -36,10 +36,18 @@ interface ChatState {
   isLoading: boolean
   isStreaming: boolean
   sidebarOpen: boolean
+  settingsPanelOpen: boolean
+  
+  // Search state
+  searchQuery: string
+  filteredConversations: Conversation[]
   
   // Settings
   temperature: number
+  maxTokens: number
   systemPrompt: string
+  theme: 'light' | 'dark'
+  settingsLoading: boolean
   
   // Actions
   setCurrentConversation: (conversation: Conversation | null) => void
@@ -54,9 +62,20 @@ interface ChatState {
   setIsLoading: (loading: boolean) => void
   setIsStreaming: (streaming: boolean) => void
   setSidebarOpen: (open: boolean) => void
+  setSettingsPanelOpen: (open: boolean) => void
   
+  // Search actions
+  setSearchQuery: (query: string) => void
+  filterConversations: () => void
+  
+  // Settings actions
   setTemperature: (temperature: number) => void
+  setMaxTokens: (maxTokens: number) => void
   setSystemPrompt: (prompt: string) => void
+  setTheme: (theme: 'light' | 'dark') => void
+  loadUserSettings: () => Promise<void>
+  saveUserSettings: () => Promise<void>
+  setSettingsLoading: (loading: boolean) => void
   
   // Message actions
   addMessage: (conversationId: string, message: Omit<Message, 'id' | 'createdAt'>) => void
@@ -72,15 +91,23 @@ export const useChatStore = create<ChatState>((set, get) => ({
   isLoading: false,
   isStreaming: false,
   sidebarOpen: true,
+  settingsPanelOpen: false,
+  searchQuery: '',
+  filteredConversations: [],
   temperature: 0.7,
+  maxTokens: 2048,
   systemPrompt: '',
+  theme: 'light',
+  settingsLoading: false,
 
   // Actions
   setCurrentConversation: (conversation) => 
     set({ currentConversation: conversation }),
 
-  setConversations: (conversations) => 
-    set({ conversations }),
+  setConversations: (conversations) => {
+    set({ conversations })
+    get().filterConversations()
+  },
 
   addConversation: (conversation) => 
     set((state) => ({ 
@@ -117,16 +144,97 @@ export const useChatStore = create<ChatState>((set, get) => ({
   setIsStreaming: (streaming) => 
     set({ isStreaming: streaming }),
 
-  setSidebarOpen: (open) => 
+  setSidebarOpen: (open) =>
     set({ sidebarOpen: open }),
 
-  setTemperature: (temperature) => 
+  setSettingsPanelOpen: (open) =>
+    set({ settingsPanelOpen: open }),
+
+  setTemperature: (temperature) =>
     set({ temperature }),
 
-  setSystemPrompt: (prompt) => 
+  setMaxTokens: (maxTokens) =>
+    set({ maxTokens }),
+
+  setSystemPrompt: (prompt) =>
     set({ systemPrompt: prompt }),
 
-  addMessage: (conversationId, message) => 
+  setTheme: (theme) =>
+    set({ theme }),
+
+  // Search actions
+  setSearchQuery: (query) => {
+    set({ searchQuery: query })
+    get().filterConversations()
+  },
+
+  filterConversations: () => {
+    const { conversations, searchQuery } = get()
+    if (!searchQuery.trim()) {
+      set({ filteredConversations: conversations })
+      return
+    }
+
+    const filtered = conversations.filter(conv =>
+      conv.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      conv.messages?.some(msg =>
+        msg.content.toLowerCase().includes(searchQuery.toLowerCase())
+      )
+    )
+    set({ filteredConversations: filtered })
+  },
+
+  // Settings persistence actions
+  loadUserSettings: async () => {
+    set({ settingsLoading: true })
+    try {
+      const response = await fetch('/api/user/settings')
+      if (response.ok) {
+        const settings = await response.json()
+        set({
+          selectedModel: settings.defaultModel,
+          temperature: settings.defaultTemperature,
+          maxTokens: settings.maxTokens,
+          systemPrompt: settings.systemPrompt,
+          theme: settings.theme
+        })
+      }
+    } catch (error) {
+      console.error('Error loading user settings:', error)
+    } finally {
+      set({ settingsLoading: false })
+    }
+  },
+
+  saveUserSettings: async () => {
+    const { selectedModel, temperature, maxTokens, systemPrompt, theme } = get()
+    try {
+      const response = await fetch('/api/user/settings', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          defaultModel: selectedModel,
+          defaultTemperature: temperature,
+          maxTokens,
+          systemPrompt,
+          theme
+        }),
+      })
+      
+      if (!response.ok) {
+        throw new Error('Failed to save settings')
+      }
+    } catch (error) {
+      console.error('Error saving user settings:', error)
+    }
+  },
+
+  setSettingsLoading: (loading) =>
+    set({ settingsLoading: loading }),
+
+  addMessage: (conversationId, message) =>
     set((state) => {
       const newMessage: Message = {
         ...message,
@@ -135,27 +243,27 @@ export const useChatStore = create<ChatState>((set, get) => ({
       }
 
       return {
-        conversations: state.conversations.map(conv => 
-          conv.id === conversationId 
+        conversations: state.conversations.map(conv =>
+          conv.id === conversationId
             ? { ...conv, messages: [...conv.messages, newMessage] }
             : conv
         ),
         currentConversation: state.currentConversation?.id === conversationId
-          ? { 
-              ...state.currentConversation, 
-              messages: [...state.currentConversation.messages, newMessage] 
+          ? {
+              ...state.currentConversation,
+              messages: [...state.currentConversation.messages, newMessage]
             }
           : state.currentConversation
       }
     }),
 
-  updateMessage: (conversationId, messageId, content) => 
+  updateMessage: (conversationId, messageId, content) =>
     set((state) => ({
-      conversations: state.conversations.map(conv => 
-        conv.id === conversationId 
+      conversations: state.conversations.map(conv =>
+        conv.id === conversationId
           ? {
               ...conv,
-              messages: conv.messages.map(msg => 
+              messages: conv.messages.map(msg =>
                 msg.id === messageId ? { ...msg, content } : msg
               )
             }
@@ -164,7 +272,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       currentConversation: state.currentConversation?.id === conversationId
         ? {
             ...state.currentConversation,
-            messages: state.currentConversation.messages.map(msg => 
+            messages: state.currentConversation.messages.map(msg =>
               msg.id === messageId ? { ...msg, content } : msg
             )
           }

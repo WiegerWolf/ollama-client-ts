@@ -2,11 +2,12 @@
 
 import { Menu, X, Settings, User, LogOut } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { ModelSelector } from "@/components/ui/model-selector"
 import { useChatStore } from "@/stores/chat-store"
 import { useSession, signOut } from "next-auth/react"
 
 export function Header() {
-  const { sidebarOpen, setSidebarOpen, selectedModel } = useChatStore()
+  const { sidebarOpen, setSidebarOpen, settingsPanelOpen, setSettingsPanelOpen } = useChatStore()
   const { data: session } = useSession()
 
   return (
@@ -28,14 +29,10 @@ export function Header() {
             Ollama Chat
           </h1>
           
-          {selectedModel && (
-            <div className="hidden sm:flex items-center">
-              <span className="text-body-small text-text-tertiary mr-xs">•</span>
-              <span className="text-body-medium text-text-secondary bg-bg-secondary px-md py-xs rounded-md border border-border-primary">
-                {selectedModel}
-              </span>
-            </div>
-          )}
+          <div className="hidden sm:flex items-center">
+            <span className="text-body-small text-text-tertiary mr-xs">•</span>
+            <ModelSelector />
+          </div>
         </div>
       </div>
 
@@ -44,7 +41,8 @@ export function Header() {
         <Button
           variant="ghost"
           size="icon"
-          className="w-10 h-10 focus-ring"
+          onClick={() => setSettingsPanelOpen(!settingsPanelOpen)}
+          className={`w-10 h-10 focus-ring ${settingsPanelOpen ? 'bg-bg-secondary' : ''}`}
           aria-label="Settings"
         >
           <Settings className="h-5 w-5" />

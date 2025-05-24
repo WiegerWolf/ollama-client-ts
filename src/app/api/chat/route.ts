@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { ChatMessage } from '@/lib/ollama-client'
+import { generateConversationTitle } from '@/lib/utils'
 
 export async function POST(request: NextRequest) {
   try {
@@ -155,11 +156,18 @@ async function saveMessageToDatabase(
   assistantMessage: ChatMessage
 ) {
   try {
-    // Verify the conversation belongs to the user
+    // Verify the conversation belongs to the user and get current state
     const conversation = await prisma.conversation.findFirst({
       where: {
         id: conversationId,
         userId: userId
+      },
+      include: {
+        _count: {
+          select: {
+            messages: true
+          }
+        }
       }
     })
 
@@ -168,32 +176,56 @@ async function saveMessageToDatabase(
       return
     }
 
-    // Save both messages in a transaction
-    await prisma.$transaction([
-      prisma.message.create({
+    // Check if this is the first user message and conversation has default title
+    const isFirstMessage = conversation._count.messages === 0
+    const hasDefaultTitle = conversation.title === 'New Conversation'
+    const shouldGenerateTitle = isFirstMessage && hasDefaultTitle && userMessage.content.trim()
+
+    // Execute operations in a transaction
+    await prisma.$transaction(async (tx) => {
+      // Save both messages
+      await tx.message.create({
         data: {
           conversationId,
           role: userMessage.role,
           content: userMessage.content,
-          metadata: userMessage.images || userMessage.tool_calls 
-            ? JSON.stringify({ 
-                images: userMessage.images, 
-                tool_calls: userMessage.tool_calls 
+          metadata: userMessage.images || userMessage.tool_calls
+            ? JSON.stringify({
+                images: userMessage.images,
+                tool_calls: userMessage.tool_calls
               })
             : null
         }
-      }),
-      prisma.message.create({
+      })
+
+      await tx.message.create({
         data: {
           conversationId,
           role: assistantMessage.role,
           content: assistantMessage.content,
-          metadata: assistantMessage.tool_calls 
+          metadata: assistantMessage.tool_calls
             ? JSON.stringify({ tool_calls: assistantMessage.tool_calls })
             : null
         }
       })
-    ])
+
+      // Update conversation title if this is the first message
+      if (shouldGenerateTitle) {
+        const newTitle = generateConversationTitle(userMessage.content)
+        await tx.conversation.update({
+          where: { id: conversationId },
+          data: {
+            title: newTitle,
+            updatedAt: new Date()
+          }
+        })
+      }
+    })
+
+    // Log title generation for debugging
+    if (shouldGenerateTitle) {
+      console.log(`Generated title for conversation ${conversationId}: "${generateConversationTitle(userMessage.content)}"`)
+    }
   } catch (error) {
     console.error('Error saving messages to database:', error)
   }

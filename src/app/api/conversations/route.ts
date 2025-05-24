@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/db'
+import { generateConversationTitle } from '@/lib/utils'
 
 export async function GET(request: NextRequest) {
   try {
@@ -51,19 +52,25 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { title, model, settings } = body
+    const { title, model, settings, firstMessage } = body
 
-    if (!title || !model) {
+    if (!model) {
       return NextResponse.json(
-        { error: 'Title and model are required' }, 
+        { error: 'Model is required' },
         { status: 400 }
       )
+    }
+
+    // Generate title from first message if provided, otherwise use default
+    let conversationTitle = title || 'New Conversation'
+    if (firstMessage && firstMessage.trim()) {
+      conversationTitle = generateConversationTitle(firstMessage)
     }
 
     const conversation = await prisma.conversation.create({
       data: {
         userId: session.user.id,
-        title,
+        title: conversationTitle,
         model,
         settings: settings ? JSON.stringify(settings) : null
       }
@@ -73,7 +80,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Error creating conversation:', error)
     return NextResponse.json(
-      { error: 'Internal server error' }, 
+      { error: 'Internal server error' },
       { status: 500 }
     )
   }

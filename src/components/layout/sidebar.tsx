@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Plus, MessageSquare, Trash2, Settings, User } from "lucide-react"
+import { Plus, MessageSquare, Trash2, Settings, User, Search, X, Edit2, Check, X as XIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useChatStore } from "@/stores/chat-store"
 import { formatRelativeTime, generateConversationTitle } from "@/lib/utils"
@@ -33,11 +33,17 @@ export function Sidebar() {
     setCurrentConversation,
     setConversations,
     deleteConversation,
-    selectedModel
+    updateConversation,
+    selectedModel,
+    searchQuery,
+    filteredConversations,
+    setSearchQuery
   } = useChatStore()
   
   const { data: session } = useSession()
   const [isLoading, setIsLoading] = useState(true)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editingTitle, setEditingTitle] = useState('')
 
   useEffect(() => {
     fetchConversations()
@@ -111,6 +117,53 @@ export function Sidebar() {
     }
   }
 
+  const startEditingTitle = (conversation: Conversation, e: React.MouseEvent) => {
+    e.stopPropagation()
+    setEditingId(conversation.id)
+    setEditingTitle(conversation.title)
+  }
+
+  const cancelEditingTitle = () => {
+    setEditingId(null)
+    setEditingTitle('')
+  }
+
+  const saveTitle = async (conversationId: string) => {
+    if (!editingTitle.trim()) {
+      cancelEditingTitle()
+      return
+    }
+
+    try {
+      const response = await fetch(`/api/conversations/${conversationId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          title: editingTitle.trim()
+        }),
+      })
+
+      if (response.ok) {
+        const updatedConversation = await response.json()
+        updateConversation(conversationId, { title: updatedConversation.title })
+        cancelEditingTitle()
+      }
+    } catch (error) {
+      console.error('Error updating conversation title:', error)
+      cancelEditingTitle()
+    }
+  }
+
+  const handleTitleKeyPress = (e: React.KeyboardEvent, conversationId: string) => {
+    if (e.key === 'Enter') {
+      saveTitle(conversationId)
+    } else if (e.key === 'Escape') {
+      cancelEditingTitle()
+    }
+  }
+
   const groupConversationsByDate = (conversations: Conversation[]): GroupedConversations => {
     const now = new Date()
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
@@ -138,7 +191,9 @@ export function Sidebar() {
     )
   }
 
-  const groupedConversations = groupConversationsByDate(conversations)
+  // Use filtered conversations if there's a search query, otherwise use all conversations
+  const conversationsToShow = searchQuery.trim() ? filteredConversations : conversations
+  const groupedConversations = groupConversationsByDate(conversationsToShow)
 
   const renderConversationGroup = (title: string, conversations: Conversation[]) => {
     if (conversations.length === 0) return null
@@ -152,33 +207,92 @@ export function Sidebar() {
           {conversations.map((conversation) => (
             <div
               key={conversation.id}
-              onClick={() => selectConversation(conversation)}
+              onClick={() => editingId !== conversation.id && selectConversation(conversation)}
               className={cn(
                 "group flex items-center justify-between p-md rounded-lg cursor-pointer transition-all duration-150 hover:bg-bg-secondary border border-transparent hover:border-border-primary",
-                currentConversation?.id === conversation.id && "bg-bg-secondary border-border-primary shadow-sm"
+                currentConversation?.id === conversation.id && "bg-bg-secondary border-border-primary shadow-sm",
+                editingId === conversation.id && "cursor-default"
               )}
             >
               <div className="flex items-center space-md flex-1 min-w-0">
                 <MessageSquare className="h-4 w-4 text-text-secondary flex-shrink-0" />
                 <div className="flex-1 min-w-0">
-                  <p className="text-body-medium text-text-primary font-medium truncate">
-                    {conversation.title}
-                  </p>
+                  {editingId === conversation.id ? (
+                    <input
+                      type="text"
+                      value={editingTitle}
+                      onChange={(e) => setEditingTitle(e.target.value)}
+                      onKeyDown={(e) => handleTitleKeyPress(e, conversation.id)}
+                      onBlur={() => saveTitle(conversation.id)}
+                      className="w-full text-body-medium text-text-primary font-medium bg-bg-primary border border-border-primary rounded px-xs py-xs focus:outline-none focus:ring-2 focus:ring-primary-blue focus:border-transparent"
+                      autoFocus
+                    />
+                  ) : (
+                    <p
+                      className="text-body-medium text-text-primary font-medium truncate cursor-pointer hover:text-primary-blue transition-colors"
+                      onClick={(e) => startEditingTitle(conversation, e)}
+                      title="Click to edit title"
+                    >
+                      {conversation.title}
+                    </p>
+                  )}
                   <p className="text-body-small text-text-tertiary">
                     {formatRelativeTime(conversation.updatedAt)} • {conversation.model}
                   </p>
                 </div>
               </div>
               
-              <Button
-                variant="ghost"
-                size="icon"
-                className="opacity-0 group-hover:opacity-100 h-7 w-7 transition-all duration-150 hover:bg-error-red hover:text-white focus-ring"
-                onClick={(e) => handleDeleteConversation(conversation.id, e)}
-                aria-label={`Delete conversation: ${conversation.title}`}
-              >
-                <Trash2 className="h-3 w-3" />
-              </Button>
+              <div className="flex items-center space-xs">
+                {editingId === conversation.id ? (
+                  <>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 transition-all duration-150 hover:bg-success-green hover:text-white focus-ring"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        saveTitle(conversation.id)
+                      }}
+                      aria-label="Save title"
+                    >
+                      <Check className="h-3 w-3" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 transition-all duration-150 hover:bg-bg-tertiary focus-ring"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        cancelEditingTitle()
+                      }}
+                      aria-label="Cancel editing"
+                    >
+                      <XIcon className="h-3 w-3" />
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="opacity-0 group-hover:opacity-100 h-7 w-7 transition-all duration-150 hover:bg-primary-blue hover:text-white focus-ring"
+                      onClick={(e) => startEditingTitle(conversation, e)}
+                      aria-label={`Edit title: ${conversation.title}`}
+                    >
+                      <Edit2 className="h-3 w-3" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="opacity-0 group-hover:opacity-100 h-7 w-7 transition-all duration-150 hover:bg-error-red hover:text-white focus-ring"
+                      onClick={(e) => handleDeleteConversation(conversation.id, e)}
+                      aria-label={`Delete conversation: ${conversation.title}`}
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  </>
+                )}
+              </div>
             </div>
           ))}
         </div>
@@ -192,12 +306,33 @@ export function Sidebar() {
       <div className="p-lg border-b border-border-primary bg-bg-secondary">
         <Button
           onClick={createNewConversation}
-          className="w-full justify-start h-11 focus-ring"
+          className="w-full justify-start h-11 focus-ring mb-md"
           variant="default"
         >
           <Plus className="h-4 w-4 mr-md" />
           New Conversation
         </Button>
+        
+        {/* Search Input */}
+        <div className="relative">
+          <Search className="absolute left-md top-1/2 transform -translate-y-1/2 h-4 w-4 text-text-tertiary" />
+          <input
+            type="text"
+            placeholder="Search conversations..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-10 pr-10 py-sm bg-bg-primary border border-border-primary rounded-lg text-body-medium text-text-primary placeholder-text-tertiary focus:outline-none focus:ring-2 focus:ring-primary-blue focus:border-transparent"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
+              className="absolute right-md top-1/2 transform -translate-y-1/2 h-4 w-4 text-text-tertiary hover:text-text-primary transition-colors"
+              aria-label="Clear search"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Conversation List Section */}
@@ -215,15 +350,30 @@ export function Sidebar() {
               </div>
             ))}
           </div>
-        ) : conversations.length === 0 ? (
+        ) : conversationsToShow.length === 0 ? (
           <div className="p-lg text-center">
             <div className="bg-bg-secondary rounded-full p-lg mb-lg mx-auto w-fit">
-              <MessageSquare className="h-8 w-8 mx-auto text-text-tertiary" />
+              {searchQuery.trim() ? (
+                <Search className="h-8 w-8 mx-auto text-text-tertiary" />
+              ) : (
+                <MessageSquare className="h-8 w-8 mx-auto text-text-tertiary" />
+              )}
             </div>
-            <p className="text-body-medium text-text-secondary">No conversations yet</p>
-            <p className="text-body-small text-text-tertiary mt-xs">
-              Create your first conversation to get started
-            </p>
+            {searchQuery.trim() ? (
+              <>
+                <p className="text-body-medium text-text-secondary">No results found</p>
+                <p className="text-body-small text-text-tertiary mt-xs">
+                  Try adjusting your search terms
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="text-body-medium text-text-secondary">No conversations yet</p>
+                <p className="text-body-small text-text-tertiary mt-xs">
+                  Create your first conversation to get started
+                </p>
+              </>
+            )}
           </div>
         ) : (
           <div className="py-lg">
