@@ -4,7 +4,7 @@ import { prisma } from '@/lib/db'
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await auth()
@@ -13,9 +13,11 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    const { id } = await params
+
     const conversation = await prisma.conversation.findFirst({
       where: {
-        id: params.id,
+        id: id,
         userId: session.user.id
       },
       include: {
@@ -46,7 +48,7 @@ export async function GET(
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await auth()
@@ -55,26 +57,27 @@ export async function PUT(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    const { id } = await params
     const body = await request.json()
     const { title, model, settings } = body
 
     const conversation = await prisma.conversation.findFirst({
       where: {
-        id: params.id,
+        id: id,
         userId: session.user.id
       }
     })
 
     if (!conversation) {
       return NextResponse.json(
-        { error: 'Conversation not found' }, 
+        { error: 'Conversation not found' },
         { status: 404 }
       )
     }
 
     const updatedConversation = await prisma.conversation.update({
       where: {
-        id: params.id
+        id: id
       },
       data: {
         ...(title && { title }),
@@ -95,7 +98,7 @@ export async function PUT(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await auth()
@@ -104,23 +107,25 @@ export async function DELETE(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    const { id } = await params
+
     const conversation = await prisma.conversation.findFirst({
       where: {
-        id: params.id,
+        id: id,
         userId: session.user.id
       }
     })
 
     if (!conversation) {
       return NextResponse.json(
-        { error: 'Conversation not found' }, 
+        { error: 'Conversation not found' },
         { status: 404 }
       )
     }
 
     await prisma.conversation.delete({
       where: {
-        id: params.id
+        id: id
       }
     })
 
