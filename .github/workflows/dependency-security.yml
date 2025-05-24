@@ -1,0 +1,486 @@
+name: Dependency & Security Monitoring
+
+on:
+  schedule:
+    # Run weekly on Mondays at 9 AM UTC
+    - cron: '0 9 * * 1'
+  push:
+    paths:
+      - 'package.json'
+      - 'bun.lock'
+  workflow_dispatch:
+
+env:
+  BUN_VERSION: '1.1.34'
+
+jobs:
+  # Job 1: Security Vulnerability Scan
+  security-scan:
+    name: Security Vulnerability Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Run bun audit
+        id: bun-audit
+        run: |
+          bun audit --audit-level=moderate --json > audit-results.json || true
+          
+          # Check if there are any vulnerabilities
+          VULNERABILITIES=$(cat audit-results.json | jq '.metadata.vulnerabilities.total // 0')
+          echo "vulnerabilities=$VULNERABILITIES" >> $GITHUB_OUTPUT
+          
+          if [ "$VULNERABILITIES" -gt 0 ]; then
+            echo "Found $VULNERABILITIES vulnerabilities"
+            bun audit --audit-level=moderate
+          else
+            echo "No vulnerabilities found"
+          fi
+
+      - name: Run Snyk security scan
+        uses: snyk/actions/node@master
+        continue-on-error: true
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          args: --severity-threshold=medium --json-file-output=snyk-results.json
+
+      - name: Upload security scan results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: security-scan-results
+          path: |
+            audit-results.json
+            snyk-results.json
+          retention-days: 30
+
+      - name: Create security issue
+        if: steps.bun-audit.outputs.vulnerabilities > 0
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const auditResults = JSON.parse(fs.readFileSync('audit-results.json', 'utf8'));
+            
+            let issueBody = '## 🚨 Security Vulnerabilities Detected\n\n';
+            issueBody += `**Total Vulnerabilities:** ${auditResults.metadata.vulnerabilities.total}\n`;
+            issueBody += `**Critical:** ${auditResults.metadata.vulnerabilities.critical || 0}\n`;
+            issueBody += `**High:** ${auditResults.metadata.vulnerabilities.high || 0}\n`;
+            issueBody += `**Moderate:** ${auditResults.metadata.vulnerabilities.moderate || 0}\n`;
+            issueBody += `**Low:** ${auditResults.metadata.vulnerabilities.low || 0}\n\n`;
+            
+            issueBody += '### Recommended Actions\n';
+            issueBody += '1. Run `bun audit --fix` to automatically fix vulnerabilities\n';
+            issueBody += '2. Review and update dependencies manually if auto-fix is not available\n';
+            issueBody += '3. Consider using alternative packages for unfixable vulnerabilities\n\n';
+            
+            issueBody += '### Audit Details\n';
+            issueBody += '```\n';
+            issueBody += JSON.stringify(auditResults, null, 2);
+            issueBody += '\n```\n';
+            
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `🚨 Security Vulnerabilities Detected - ${auditResults.metadata.vulnerabilities.total} issues`,
+              body: issueBody,
+              labels: ['security', 'dependencies', 'high-priority']
+            });
+
+  # Job 2: Dependency Update Check
+  dependency-updates:
+    name: Check for Dependency Updates
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Install npm-check-updates
+        run: bun add -g npm-check-updates
+
+      - name: Check for updates
+        run: |
+          # Check for updates and save to file
+          ncu --jsonUpgraded > dependency-updates.json || echo "{}" > dependency-updates.json
+          
+          # Display updates in a readable format
+          echo "## Available Dependency Updates" > update-summary.md
+          echo "" >> update-summary.md
+          
+          if [ -s dependency-updates.json ] && [ "$(cat dependency-updates.json)" != "{}" ]; then
+            echo "Updates available:" >> update-summary.md
+            echo '```json' >> update-summary.md
+            cat dependency-updates.json >> update-summary.md
+            echo '```' >> update-summary.md
+          else
+            echo "All dependencies are up to date! ✅" >> update-summary.md
+          fi
+
+      - name: Check for major version updates
+        run: |
+          # Check for major version updates separately
+          ncu --target major --jsonUpgraded > major-updates.json || echo "{}" > major-updates.json
+          
+          echo "" >> update-summary.md
+          echo "## Major Version Updates (Require Manual Review)" >> update-summary.md
+          echo "" >> update-summary.md
+          
+          if [ -s major-updates.json ] && [ "$(cat major-updates.json)" != "{}" ]; then
+            echo "⚠️ Major updates available (may contain breaking changes):" >> update-summary.md
+            echo '```json' >> update-summary.md
+            cat major-updates.json >> update-summary.md
+            echo '```' >> update-summary.md
+          else
+            echo "No major updates available." >> update-summary.md
+          fi
+
+      - name: Upload dependency update results
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-updates
+          path: |
+            dependency-updates.json
+            major-updates.json
+            update-summary.md
+          retention-days: 30
+
+      - name: Create dependency update issue
+        if: github.event_name == 'schedule'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            
+            let hasUpdates = false;
+            let issueBody = '';
+            
+            // Check for regular updates
+            if (fs.existsSync('dependency-updates.json')) {
+              const updates = JSON.parse(fs.readFileSync('dependency-updates.json', 'utf8'));
+              if (Object.keys(updates).length > 0) {
+                hasUpdates = true;
+              }
+            }
+            
+            // Check for major updates
+            if (fs.existsSync('major-updates.json')) {
+              const majorUpdates = JSON.parse(fs.readFileSync('major-updates.json', 'utf8'));
+              if (Object.keys(majorUpdates).length > 0) {
+                hasUpdates = true;
+              }
+            }
+            
+            if (hasUpdates && fs.existsSync('update-summary.md')) {
+              issueBody = fs.readFileSync('update-summary.md', 'utf8');
+              
+              issueBody += '\n\n### Recommended Actions\n';
+              issueBody += '1. Review the updates and their changelogs\n';
+              issueBody += '2. Test updates in a separate branch\n';
+              issueBody += '3. Run the full test suite after updates\n';
+              issueBody += '4. Pay special attention to major version updates\n\n';
+              issueBody += '### Automated Commands\n';
+              issueBody += '```bash\n';
+              issueBody += '# Update minor and patch versions\n';
+              issueBody += 'ncu -u --target minor\n';
+              issueBody += 'bun install\n';
+              issueBody += 'bun test\n';
+              issueBody += '```\n';
+              
+              github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: `📦 Weekly Dependency Updates Available`,
+                body: issueBody,
+                labels: ['dependencies', 'maintenance']
+              });
+            }
+
+  # Job 3: License Compliance Check
+  license-check:
+    name: License Compliance Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Install license checker
+        run: bun add -g license-checker
+
+      - name: Check licenses
+        run: |
+          # Generate license report
+          license-checker --json > licenses.json
+          license-checker --csv > licenses.csv
+          
+          # Check for problematic licenses
+          cat > check-licenses.js << 'EOF'
+          const fs = require('fs');
+          const licenses = JSON.parse(fs.readFileSync('licenses.json', 'utf8'));
+          
+          // Define problematic licenses
+          const problematicLicenses = [
+            'GPL-2.0',
+            'GPL-3.0',
+            'AGPL-1.0',
+            'AGPL-3.0',
+            'LGPL-2.0',
+            'LGPL-2.1',
+            'LGPL-3.0',
+            'CPAL-1.0',
+            'EPL-1.0',
+            'EPL-2.0'
+          ];
+          
+          const issues = [];
+          
+          Object.entries(licenses).forEach(([package, info]) => {
+            const license = info.licenses;
+            if (typeof license === 'string' && problematicLicenses.includes(license)) {
+              issues.push({ package, license, repository: info.repository });
+            }
+          });
+          
+          if (issues.length > 0) {
+            console.log('❌ Problematic licenses found:');
+            issues.forEach(issue => {
+              console.log(`  - ${issue.package}: ${issue.license}`);
+            });
+            
+            fs.writeFileSync('license-issues.json', JSON.stringify(issues, null, 2));
+            process.exit(1);
+          } else {
+            console.log('✅ No problematic licenses found');
+          }
+          EOF
+          
+          node check-licenses.js
+
+      - name: Upload license report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: license-report
+          path: |
+            licenses.json
+            licenses.csv
+            license-issues.json
+          retention-days: 30
+
+  # Job 4: Dependency Health Check
+  dependency-health:
+    name: Dependency Health Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Analyze dependency health
+        run: |
+          cat > analyze-deps.js << 'EOF'
+          const fs = require('fs');
+          const { execSync } = require('child_process');
+          
+          // Read package.json
+          const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          const dependencies = { ...packageJson.dependencies, ...packageJson.devDependencies };
+          
+          const healthReport = {
+            totalDependencies: Object.keys(dependencies).length,
+            outdatedPackages: [],
+            unmaintainedPackages: [],
+            heavyPackages: [],
+            duplicatePackages: []
+          };
+          
+          console.log('Analyzing dependency health...');
+          
+          // Check for outdated packages
+          try {
+            const outdated = execSync('bun outdated --json', { encoding: 'utf8' });
+            const outdatedData = JSON.parse(outdated);
+            healthReport.outdatedPackages = Object.keys(outdatedData);
+          } catch (e) {
+            // bun outdated returns non-zero exit code when packages are outdated
+            if (e.stdout) {
+              try {
+                const outdatedData = JSON.parse(e.stdout);
+                healthReport.outdatedPackages = Object.keys(outdatedData);
+              } catch (parseError) {
+                console.log('No outdated packages found');
+              }
+            }
+          }
+          
+          // Check bundle size impact
+          try {
+            const bundleAnalysis = execSync('bun bundle-phobia-cli --json ' + Object.keys(dependencies).join(' '), { encoding: 'utf8' });
+            const bundleData = JSON.parse(bundleAnalysis);
+            healthReport.heavyPackages = bundleData.filter(pkg => pkg.size > 100000); // > 100KB
+          } catch (e) {
+            console.log('Bundle analysis skipped');
+          }
+          
+          // Generate report
+          let report = '# 🏥 Dependency Health Report\n\n';
+          report += `**Total Dependencies:** ${healthReport.totalDependencies}\n`;
+          report += `**Outdated Packages:** ${healthReport.outdatedPackages.length}\n`;
+          report += `**Heavy Packages (>100KB):** ${healthReport.heavyPackages.length}\n\n`;
+          
+          if (healthReport.outdatedPackages.length > 0) {
+            report += '## 📅 Outdated Packages\n';
+            healthReport.outdatedPackages.forEach(pkg => {
+              report += `- ${pkg}\n`;
+            });
+            report += '\n';
+          }
+          
+          if (healthReport.heavyPackages.length > 0) {
+            report += '## 🏋️ Heavy Packages\n';
+            healthReport.heavyPackages.forEach(pkg => {
+              report += `- ${pkg.name}: ${(pkg.size / 1024).toFixed(1)}KB\n`;
+            });
+            report += '\n';
+          }
+          
+          report += '## 📊 Recommendations\n';
+          report += '- Keep dependencies up to date for security and performance\n';
+          report += '- Consider alternatives for heavy packages\n';
+          report += '- Regularly audit and remove unused dependencies\n';
+          report += '- Use tree-shaking to reduce bundle size\n';
+          
+          fs.writeFileSync('dependency-health-report.md', report);
+          fs.writeFileSync('dependency-health.json', JSON.stringify(healthReport, null, 2));
+          
+          console.log(report);
+          EOF
+          
+          node analyze-deps.js
+
+      - name: Upload dependency health report
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-health-report
+          path: |
+            dependency-health-report.md
+            dependency-health.json
+          retention-days: 30
+
+  # Job 5: Generate Security Summary
+  security-summary:
+    name: Generate Security Summary
+    runs-on: ubuntu-latest
+    needs: [security-scan, dependency-updates, license-check, dependency-health]
+    if: always()
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+
+      - name: Generate comprehensive security summary
+        run: |
+          cat > generate-security-summary.js << 'EOF'
+          const fs = require('fs');
+          
+          let summary = '# 🔒 Security & Dependency Summary\n\n';
+          summary += `**Generated:** ${new Date().toISOString()}\n`;
+          summary += `**Workflow:** ${process.env.GITHUB_WORKFLOW}\n\n`;
+          
+          // Security scan results
+          if (fs.existsSync('security-scan-results/audit-results.json')) {
+            const audit = JSON.parse(fs.readFileSync('security-scan-results/audit-results.json', 'utf8'));
+            summary += '## 🚨 Security Vulnerabilities\n\n';
+            summary += `- **Total:** ${audit.metadata.vulnerabilities.total || 0}\n`;
+            summary += `- **Critical:** ${audit.metadata.vulnerabilities.critical || 0}\n`;
+            summary += `- **High:** ${audit.metadata.vulnerabilities.high || 0}\n`;
+            summary += `- **Moderate:** ${audit.metadata.vulnerabilities.moderate || 0}\n`;
+            summary += `- **Low:** ${audit.metadata.vulnerabilities.low || 0}\n\n`;
+          }
+          
+          // Dependency updates
+          if (fs.existsSync('dependency-updates/dependency-updates.json')) {
+            const updates = JSON.parse(fs.readFileSync('dependency-updates/dependency-updates.json', 'utf8'));
+            summary += '## 📦 Available Updates\n\n';
+            summary += `- **Packages with updates:** ${Object.keys(updates).length}\n\n`;
+          }
+          
+          // License compliance
+          if (fs.existsSync('license-report/license-issues.json')) {
+            const licenseIssues = JSON.parse(fs.readFileSync('license-report/license-issues.json', 'utf8'));
+            summary += '## ⚖️ License Compliance\n\n';
+            summary += `- **Problematic licenses:** ${licenseIssues.length}\n\n`;
+          } else {
+            summary += '## ⚖️ License Compliance\n\n';
+            summary += '- **Status:** ✅ All licenses compliant\n\n';
+          }
+          
+          // Dependency health
+          if (fs.existsSync('dependency-health-report/dependency-health.json')) {
+            const health = JSON.parse(fs.readFileSync('dependency-health-report/dependency-health.json', 'utf8'));
+            summary += '## 🏥 Dependency Health\n\n';
+            summary += `- **Total dependencies:** ${health.totalDependencies}\n`;
+            summary += `- **Outdated packages:** ${health.outdatedPackages.length}\n`;
+            summary += `- **Heavy packages:** ${health.heavyPackages.length}\n\n`;
+          }
+          
+          summary += '## 🎯 Action Items\n\n';
+          summary += '1. **Security**: Address any critical or high vulnerabilities immediately\n';
+          summary += '2. **Updates**: Review and apply dependency updates\n';
+          summary += '3. **Licenses**: Resolve any license compliance issues\n';
+          summary += '4. **Performance**: Consider alternatives for heavy dependencies\n\n';
+          
+          summary += '---\n';
+          summary += '*This summary was automatically generated by the dependency & security monitoring workflow.*\n';
+          
+          fs.writeFileSync('security-summary.md', summary);
+          console.log(summary);
+          EOF
+          
+          node generate-security-summary.js
+
+      - name: Upload security summary
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-summary
+          path: security-summary.md
+          retention-days: 90
+
+      - name: Update repository security status
+        if: github.ref == 'refs/heads/main'
+        run: |
+          # Create or update security status badge
+          echo "Security scan completed on $(date)" > .github/security-status.txt
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add .github/security-status.txt
+          git commit -m "Update security status [skip ci]" || exit 0
+          git push

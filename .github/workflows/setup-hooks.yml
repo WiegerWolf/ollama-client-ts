@@ -1,0 +1,335 @@
+name: Setup Development Hooks
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/setup-hooks.yml'
+      - 'package.json'
+
+jobs:
+  setup-hooks:
+    name: Setup Pre-commit Hooks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install Husky and lint-staged
+        run: |
+          npm install --save-dev husky lint-staged
+          npm install --save-dev @commitlint/cli @commitlint/config-conventional
+
+      - name: Initialize Husky
+        run: |
+          npx husky init
+          
+      - name: Create pre-commit hook
+        run: |
+          cat > .husky/pre-commit << 'EOF'
+          #!/usr/bin/env sh
+          . "$(dirname -- "$0")/_/husky.sh"
+          
+          echo "🔍 Running pre-commit checks..."
+          
+          # Run lint-staged for staged files
+          npx lint-staged
+          
+          # Run type checking
+          echo "🔧 Type checking..."
+          npx tsc --noEmit
+          
+          # Run unit tests for changed files
+          echo "🧪 Running unit tests..."
+          npm run test -- --passWithNoTests --findRelatedTests --bail
+          
+          echo "✅ Pre-commit checks passed!"
+          EOF
+          
+          chmod +x .husky/pre-commit
+
+      - name: Create commit-msg hook
+        run: |
+          cat > .husky/commit-msg << 'EOF'
+          #!/usr/bin/env sh
+          . "$(dirname -- "$0")/_/husky.sh"
+          
+          echo "📝 Validating commit message..."
+          npx commitlint --edit $1
+          EOF
+          
+          chmod +x .husky/commit-msg
+
+      - name: Create pre-push hook
+        run: |
+          cat > .husky/pre-push << 'EOF'
+          #!/usr/bin/env sh
+          . "$(dirname -- "$0")/_/husky.sh"
+          
+          echo "🚀 Running pre-push checks..."
+          
+          # Run full test suite
+          echo "🧪 Running full test suite..."
+          npm run test:coverage
+          
+          # Check coverage threshold
+          echo "📊 Checking coverage threshold..."
+          COVERAGE=$(npm run test:coverage -- --silent | grep -o 'All files.*[0-9]\+\.[0-9]\+' | grep -o '[0-9]\+\.[0-9]\+' | head -1)
+          if (( $(echo "$COVERAGE < 70" | bc -l) )); then
+            echo "❌ Coverage $COVERAGE% is below 70% threshold"
+            exit 1
+          fi
+          
+          # Run build to ensure it works
+          echo "🏗️ Testing build..."
+          npm run build
+          
+          echo "✅ Pre-push checks passed!"
+          EOF
+          
+          chmod +x .husky/pre-push
+
+      - name: Update package.json with scripts and lint-staged config
+        run: |
+          cat > update-package.js << 'EOF'
+          const fs = require('fs');
+          const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          
+          // Add prepare script for Husky
+          if (!packageJson.scripts.prepare) {
+            packageJson.scripts.prepare = 'husky';
+          }
+          
+          // Add lint-staged configuration
+          packageJson['lint-staged'] = {
+            '*.{js,jsx,ts,tsx}': [
+              'eslint --fix',
+              'prettier --write'
+            ],
+            '*.{json,md,yml,yaml}': [
+              'prettier --write'
+            ],
+            '*.{ts,tsx}': [
+              'bash -c "tsc --noEmit"'
+            ]
+          };
+          
+          // Add commitlint configuration
+          packageJson.commitlint = {
+            extends: ['@commitlint/config-conventional'],
+            rules: {
+              'type-enum': [2, 'always', [
+                'feat',
+                'fix',
+                'docs',
+                'style',
+                'refactor',
+                'perf',
+                'test',
+                'chore',
+                'ci',
+                'build'
+              ]],
+              'subject-max-length': [2, 'always', 72],
+              'body-max-line-length': [2, 'always', 100]
+            }
+          };
+          
+          fs.writeFileSync('package.json', JSON.stringify(packageJson, null, 2) + '\n');
+          EOF
+          
+          node update-package.js
+
+      - name: Create commitlint config
+        run: |
+          cat > commitlint.config.js << 'EOF'
+          module.exports = {
+            extends: ['@commitlint/config-conventional'],
+            rules: {
+              'type-enum': [2, 'always', [
+                'feat',     // New feature
+                'fix',      // Bug fix
+                'docs',     // Documentation changes
+                'style',    // Code style changes (formatting, etc.)
+                'refactor', // Code refactoring
+                'perf',     // Performance improvements
+                'test',     // Adding or updating tests
+                'chore',    // Maintenance tasks
+                'ci',       // CI/CD changes
+                'build'     // Build system changes
+              ]],
+              'subject-max-length': [2, 'always', 72],
+              'body-max-line-length': [2, 'always', 100],
+              'header-max-length': [2, 'always', 72]
+            }
+          };
+          EOF
+
+      - name: Create development setup script
+        run: |
+          cat > scripts/setup-dev-env.js << 'EOF'
+          #!/usr/bin/env node
+          
+          const { execSync } = require('child_process');
+          const fs = require('fs');
+          const path = require('path');
+          
+          console.log('🚀 Setting up development environment...\n');
+          
+          // Check if we're in the right directory
+          if (!fs.existsSync('package.json')) {
+            console.error('❌ package.json not found. Please run this script from the project root.');
+            process.exit(1);
+          }
+          
+          try {
+            // Install dependencies
+            console.log('📦 Installing dependencies...');
+            execSync('npm install', { stdio: 'inherit' });
+            
+            // Setup Husky hooks
+            console.log('🪝 Setting up Git hooks...');
+            execSync('npx husky install', { stdio: 'inherit' });
+            
+            // Create test database
+            console.log('🗄️ Setting up test database...');
+            if (fs.existsSync('prisma/schema.prisma')) {
+              execSync('npx prisma generate', { stdio: 'inherit' });
+              // Create test database file
+              fs.writeFileSync('test.db', '');
+              console.log('✅ Test database created');
+            }
+            
+            // Run initial tests to verify setup
+            console.log('🧪 Running initial test verification...');
+            execSync('npm run test -- --passWithNoTests', { stdio: 'inherit' });
+            
+            // Create VS Code settings for better development experience
+            const vscodeDir = '.vscode';
+            if (!fs.existsSync(vscodeDir)) {
+              fs.mkdirSync(vscodeDir);
+            }
+            
+            const vscodeSettings = {
+              "editor.formatOnSave": true,
+              "editor.codeActionsOnSave": {
+                "source.fixAll.eslint": true
+              },
+              "typescript.preferences.importModuleSpecifier": "relative",
+              "jest.autoRun": "off",
+              "jest.showCoverageOnLoad": true,
+              "files.exclude": {
+                "**/node_modules": true,
+                "**/.next": true,
+                "**/coverage": true
+              }
+            };
+            
+            fs.writeFileSync(
+              path.join(vscodeDir, 'settings.json'),
+              JSON.stringify(vscodeSettings, null, 2)
+            );
+            
+            const vscodeExtensions = {
+              "recommendations": [
+                "esbenp.prettier-vscode",
+                "dbaeumer.vscode-eslint",
+                "bradlc.vscode-tailwindcss",
+                "ms-playwright.playwright",
+                "orta.vscode-jest",
+                "ms-vscode.vscode-typescript-next"
+              ]
+            };
+            
+            fs.writeFileSync(
+              path.join(vscodeDir, 'extensions.json'),
+              JSON.stringify(vscodeExtensions, null, 2)
+            );
+            
+            console.log('\n✅ Development environment setup complete!');
+            console.log('\n📋 Next steps:');
+            console.log('1. Install recommended VS Code extensions');
+            console.log('2. Run `npm run dev` to start the development server');
+            console.log('3. Run `npm run test:watch` to start tests in watch mode');
+            console.log('4. Make your first commit to test the hooks!');
+            console.log('\n🎯 Git hooks are now active:');
+            console.log('- Pre-commit: Linting, type checking, and related tests');
+            console.log('- Commit-msg: Conventional commit message validation');
+            console.log('- Pre-push: Full test suite and build verification');
+            
+          } catch (error) {
+            console.error('❌ Setup failed:', error.message);
+            process.exit(1);
+          }
+          EOF
+          
+          chmod +x scripts/setup-dev-env.js
+
+      - name: Create local test runner script
+        run: |
+          cat > scripts/test-local.js << 'EOF'
+          #!/usr/bin/env node
+          
+          const { execSync } = require('child_process');
+          const fs = require('fs');
+          
+          console.log('🧪 Running local test suite...\n');
+          
+          try {
+            // Run linting
+            console.log('🔍 Running ESLint...');
+            execSync('npm run lint', { stdio: 'inherit' });
+            console.log('✅ Linting passed\n');
+            
+            // Run type checking
+            console.log('🔧 Running TypeScript type checking...');
+            execSync('npx tsc --noEmit', { stdio: 'inherit' });
+            console.log('✅ Type checking passed\n');
+            
+            // Run unit tests with coverage
+            console.log('🧪 Running unit tests with coverage...');
+            execSync('npm run test:coverage', { stdio: 'inherit' });
+            console.log('✅ Unit tests passed\n');
+            
+            // Run build test
+            console.log('🏗️ Testing build...');
+            execSync('npm run build', { stdio: 'inherit' });
+            console.log('✅ Build successful\n');
+            
+            // Run E2E tests (optional, can be skipped locally)
+            const runE2E = process.argv.includes('--e2e');
+            if (runE2E) {
+              console.log('🎭 Running E2E tests...');
+              execSync('npm run test:e2e', { stdio: 'inherit' });
+              console.log('✅ E2E tests passed\n');
+            } else {
+              console.log('⏭️ Skipping E2E tests (use --e2e flag to include)\n');
+            }
+            
+            console.log('🎉 All tests passed! Ready to commit and push.');
+            
+          } catch (error) {
+            console.error('❌ Tests failed:', error.message);
+            console.log('\n💡 Tips:');
+            console.log('- Fix linting errors with: npm run lint -- --fix');
+            console.log('- Check test failures and fix the issues');
+            console.log('- Ensure all files are properly typed');
+            process.exit(1);
+          }
+          EOF
+          
+          chmod +x scripts/test-local.js
+
+      - name: Commit changes
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add .
+          git commit -m "chore: setup pre-commit hooks and development environment [skip ci]" || exit 0
+          git push

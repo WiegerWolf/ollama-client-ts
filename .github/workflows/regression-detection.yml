@@ -1,0 +1,514 @@
+name: Regression Detection & Monitoring
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    # Run daily at 2 AM UTC to catch any drift
+    - cron: '0 2 * * *'
+
+env:
+  BUN_VERSION: '1.1.34'
+
+jobs:
+  # Job 1: Performance Regression Detection
+  performance-regression:
+    name: Performance Regression Detection
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch full history for comparison
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build application
+        run: bun run build
+
+      - name: Setup test database
+        run: |
+          touch test.db
+          bun prisma migrate deploy || echo "No migrations to run"
+
+      - name: Start application
+        run: |
+          bun start &
+          sleep 15
+        env:
+          DATABASE_URL: "file:./test.db"
+          NEXTAUTH_SECRET: "test-secret-key-for-ci"
+          NEXTAUTH_URL: "http://localhost:3000"
+
+      - name: Run performance benchmarks
+        run: |
+          bun add -g lighthouse autocannon
+          
+          # Create performance test script
+          cat > performance-test.js << 'EOF'
+          const lighthouse = require('lighthouse');
+          const chromeLauncher = require('chrome-launcher');
+          const fs = require('fs');
+          
+          async function runLighthouse() {
+            const chrome = await chromeLauncher.launch({chromeFlags: ['--headless', '--no-sandbox']});
+            const options = {logLevel: 'info', output: 'json', port: chrome.port};
+            const runnerResult = await lighthouse('http://localhost:3000', options);
+            
+            await chrome.kill();
+            
+            const report = runnerResult.report;
+            const scores = JSON.parse(report);
+            
+            return {
+              performance: scores.categories.performance.score * 100,
+              accessibility: scores.categories.accessibility.score * 100,
+              bestPractices: scores.categories['best-practices'].score * 100,
+              seo: scores.categories.seo.score * 100,
+              fcp: scores.audits['first-contentful-paint'].numericValue,
+              lcp: scores.audits['largest-contentful-paint'].numericValue,
+              cls: scores.audits['cumulative-layout-shift'].numericValue,
+              tti: scores.audits['interactive'].numericValue
+            };
+          }
+          
+          runLighthouse().then(scores => {
+            console.log('Performance Metrics:');
+            console.log(JSON.stringify(scores, null, 2));
+            fs.writeFileSync('./current-performance.json', JSON.stringify(scores, null, 2));
+          }).catch(console.error);
+          EOF
+          
+          node performance-test.js
+
+      - name: Load baseline performance metrics
+        id: baseline
+        run: |
+          # Try to get baseline from main branch
+          if git show main:performance-baseline.json > baseline-performance.json 2>/dev/null; then
+            echo "baseline_exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "baseline_exists=false" >> $GITHUB_OUTPUT
+            # Create initial baseline if it doesn't exist
+            cp current-performance.json baseline-performance.json
+          fi
+
+      - name: Compare performance metrics
+        if: steps.baseline.outputs.baseline_exists == 'true'
+        run: |
+          cat > compare-performance.js << 'EOF'
+          const fs = require('fs');
+          const current = JSON.parse(fs.readFileSync('./current-performance.json'));
+          const baseline = JSON.parse(fs.readFileSync('./baseline-performance.json'));
+          
+          const thresholds = {
+            performance: 5,    // 5% degradation threshold
+            fcp: 200,         // 200ms threshold for FCP
+            lcp: 500,         // 500ms threshold for LCP
+            tti: 1000,        // 1s threshold for TTI
+            cls: 0.05         // 0.05 threshold for CLS
+          };
+          
+          let hasRegression = false;
+          const regressions = [];
+          
+          // Check performance score
+          const perfDiff = baseline.performance - current.performance;
+          if (perfDiff > thresholds.performance) {
+            hasRegression = true;
+            regressions.push(`Performance score decreased by ${perfDiff.toFixed(2)}% (${baseline.performance.toFixed(2)} → ${current.performance.toFixed(2)})`);
+          }
+          
+          // Check FCP
+          const fcpDiff = current.fcp - baseline.fcp;
+          if (fcpDiff > thresholds.fcp) {
+            hasRegression = true;
+            regressions.push(`First Contentful Paint increased by ${fcpDiff.toFixed(0)}ms (${baseline.fcp.toFixed(0)} → ${current.fcp.toFixed(0)})`);
+          }
+          
+          // Check LCP
+          const lcpDiff = current.lcp - baseline.lcp;
+          if (lcpDiff > thresholds.lcp) {
+            hasRegression = true;
+            regressions.push(`Largest Contentful Paint increased by ${lcpDiff.toFixed(0)}ms (${baseline.lcp.toFixed(0)} → ${current.lcp.toFixed(0)})`);
+          }
+          
+          // Check TTI
+          const ttiDiff = current.tti - baseline.tti;
+          if (ttiDiff > thresholds.tti) {
+            hasRegression = true;
+            regressions.push(`Time to Interactive increased by ${ttiDiff.toFixed(0)}ms (${baseline.tti.toFixed(0)} → ${current.tti.toFixed(0)})`);
+          }
+          
+          // Check CLS
+          const clsDiff = current.cls - baseline.cls;
+          if (clsDiff > thresholds.cls) {
+            hasRegression = true;
+            regressions.push(`Cumulative Layout Shift increased by ${clsDiff.toFixed(3)} (${baseline.cls.toFixed(3)} → ${current.cls.toFixed(3)})`);
+          }
+          
+          if (hasRegression) {
+            console.log('❌ Performance regressions detected:');
+            regressions.forEach(regression => console.log(`  - ${regression}`));
+            process.exit(1);
+          } else {
+            console.log('✅ No performance regressions detected');
+            
+            // Show improvements if any
+            const improvements = [];
+            if (perfDiff < -1) improvements.push(`Performance score improved by ${Math.abs(perfDiff).toFixed(2)}%`);
+            if (fcpDiff < -50) improvements.push(`FCP improved by ${Math.abs(fcpDiff).toFixed(0)}ms`);
+            if (lcpDiff < -100) improvements.push(`LCP improved by ${Math.abs(lcpDiff).toFixed(0)}ms`);
+            
+            if (improvements.length > 0) {
+              console.log('🚀 Performance improvements detected:');
+              improvements.forEach(improvement => console.log(`  - ${improvement}`));
+            }
+          }
+          EOF
+          
+          node compare-performance.js
+
+      - name: Update performance baseline
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          cp current-performance.json performance-baseline.json
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add performance-baseline.json
+          git commit -m "Update performance baseline [skip ci]" || exit 0
+          git push
+
+      - name: Upload performance artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: performance-metrics
+          path: |
+            current-performance.json
+            baseline-performance.json
+          retention-days: 30
+
+  # Job 2: Test Coverage Regression Detection
+  coverage-regression:
+    name: Coverage Regression Detection
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Run tests with coverage
+        run: bun run test:coverage
+
+      - name: Extract coverage metrics
+        run: |
+          # Extract coverage percentages from Jest output
+          cat > extract-coverage.js << 'EOF'
+          const fs = require('fs');
+          const coverage = JSON.parse(fs.readFileSync('./coverage/coverage-summary.json'));
+          
+          const metrics = {
+            lines: coverage.total.lines.pct,
+            functions: coverage.total.functions.pct,
+            branches: coverage.total.branches.pct,
+            statements: coverage.total.statements.pct
+          };
+          
+          console.log('Current Coverage:', JSON.stringify(metrics, null, 2));
+          fs.writeFileSync('./current-coverage.json', JSON.stringify(metrics, null, 2));
+          EOF
+          
+          node extract-coverage.js
+
+      - name: Load baseline coverage
+        id: coverage-baseline
+        run: |
+          if git show main:coverage-baseline.json > baseline-coverage.json 2>/dev/null; then
+            echo "baseline_exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "baseline_exists=false" >> $GITHUB_OUTPUT
+            cp current-coverage.json baseline-coverage.json
+          fi
+
+      - name: Compare coverage metrics
+        if: steps.coverage-baseline.outputs.baseline_exists == 'true'
+        run: |
+          cat > compare-coverage.js << 'EOF'
+          const fs = require('fs');
+          const current = JSON.parse(fs.readFileSync('./current-coverage.json'));
+          const baseline = JSON.parse(fs.readFileSync('./baseline-coverage.json'));
+          
+          const threshold = 2; // 2% regression threshold
+          let hasRegression = false;
+          const regressions = [];
+          
+          Object.keys(current).forEach(metric => {
+            const diff = baseline[metric] - current[metric];
+            if (diff > threshold) {
+              hasRegression = true;
+              regressions.push(`${metric} coverage decreased by ${diff.toFixed(2)}% (${baseline[metric].toFixed(2)}% → ${current[metric].toFixed(2)}%)`);
+            }
+          });
+          
+          if (hasRegression) {
+            console.log('❌ Coverage regressions detected:');
+            regressions.forEach(regression => console.log(`  - ${regression}`));
+            process.exit(1);
+          } else {
+            console.log('✅ No coverage regressions detected');
+            
+            // Show improvements
+            const improvements = [];
+            Object.keys(current).forEach(metric => {
+              const diff = current[metric] - baseline[metric];
+              if (diff > 1) {
+                improvements.push(`${metric} coverage improved by ${diff.toFixed(2)}%`);
+              }
+            });
+            
+            if (improvements.length > 0) {
+              console.log('🚀 Coverage improvements detected:');
+              improvements.forEach(improvement => console.log(`  - ${improvement}`));
+            }
+          }
+          EOF
+          
+          node compare-coverage.js
+
+      - name: Update coverage baseline
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          cp current-coverage.json coverage-baseline.json
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add coverage-baseline.json
+          git commit -m "Update coverage baseline [skip ci]" || exit 0
+          git push
+
+  # Job 3: Bundle Size Regression Detection
+  bundle-size-regression:
+    name: Bundle Size Regression Detection
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build application
+        run: bun run build
+
+      - name: Analyze bundle size
+        run: |
+          cat > analyze-bundle.js << 'EOF'
+          const fs = require('fs');
+          const path = require('path');
+          
+          function getDirectorySize(dirPath) {
+            let totalSize = 0;
+            const files = fs.readdirSync(dirPath);
+            
+            files.forEach(file => {
+              const filePath = path.join(dirPath, file);
+              const stats = fs.statSync(filePath);
+              
+              if (stats.isDirectory()) {
+                totalSize += getDirectorySize(filePath);
+              } else {
+                totalSize += stats.size;
+              }
+            });
+            
+            return totalSize;
+          }
+          
+          const buildSize = getDirectorySize('./.next');
+          const staticSize = getDirectorySize('./.next/static');
+          
+          const metrics = {
+            totalBuildSize: Math.round(buildSize / 1024), // KB
+            staticAssetsSize: Math.round(staticSize / 1024), // KB
+            timestamp: new Date().toISOString()
+          };
+          
+          console.log('Bundle Size Metrics:', JSON.stringify(metrics, null, 2));
+          fs.writeFileSync('./current-bundle-size.json', JSON.stringify(metrics, null, 2));
+          EOF
+          
+          node analyze-bundle.js
+
+      - name: Load baseline bundle size
+        id: bundle-baseline
+        run: |
+          if git show main:bundle-size-baseline.json > baseline-bundle-size.json 2>/dev/null; then
+            echo "baseline_exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "baseline_exists=false" >> $GITHUB_OUTPUT
+            cp current-bundle-size.json baseline-bundle-size.json
+          fi
+
+      - name: Compare bundle size
+        if: steps.bundle-baseline.outputs.baseline_exists == 'true'
+        run: |
+          cat > compare-bundle-size.js << 'EOF'
+          const fs = require('fs');
+          const current = JSON.parse(fs.readFileSync('./current-bundle-size.json'));
+          const baseline = JSON.parse(fs.readFileSync('./baseline-bundle-size.json'));
+          
+          const thresholds = {
+            totalBuildSize: 100,    // 100KB threshold
+            staticAssetsSize: 50    // 50KB threshold
+          };
+          
+          let hasRegression = false;
+          const regressions = [];
+          
+          Object.keys(thresholds).forEach(metric => {
+            const diff = current[metric] - baseline[metric];
+            if (diff > thresholds[metric]) {
+              hasRegression = true;
+              regressions.push(`${metric} increased by ${diff}KB (${baseline[metric]}KB → ${current[metric]}KB)`);
+            }
+          });
+          
+          if (hasRegression) {
+            console.log('❌ Bundle size regressions detected:');
+            regressions.forEach(regression => console.log(`  - ${regression}`));
+            process.exit(1);
+          } else {
+            console.log('✅ No bundle size regressions detected');
+            
+            // Show improvements
+            const improvements = [];
+            Object.keys(thresholds).forEach(metric => {
+              const diff = baseline[metric] - current[metric];
+              if (diff > 10) {
+                improvements.push(`${metric} reduced by ${diff}KB`);
+              }
+            });
+            
+            if (improvements.length > 0) {
+              console.log('🚀 Bundle size improvements detected:');
+              improvements.forEach(improvement => console.log(`  - ${improvement}`));
+            }
+          }
+          EOF
+          
+          node compare-bundle-size.js
+
+      - name: Update bundle size baseline
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          cp current-bundle-size.json bundle-size-baseline.json
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add bundle-size-baseline.json
+          git commit -m "Update bundle size baseline [skip ci]" || exit 0
+          git push
+
+  # Job 4: Create Regression Report
+  regression-report:
+    name: Generate Regression Report
+    runs-on: ubuntu-latest
+    needs: [performance-regression, coverage-regression, bundle-size-regression]
+    if: always()
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+
+      - name: Generate regression report
+        run: |
+          cat > generate-report.js << 'EOF'
+          const fs = require('fs');
+          
+          let report = '# 🔍 Regression Detection Report\n\n';
+          report += `**Generated:** ${new Date().toISOString()}\n`;
+          report += `**Branch:** ${process.env.GITHUB_REF}\n`;
+          report += `**Commit:** ${process.env.GITHUB_SHA}\n\n`;
+          
+          // Performance metrics
+          if (fs.existsSync('performance-metrics/current-performance.json')) {
+            const perf = JSON.parse(fs.readFileSync('performance-metrics/current-performance.json'));
+            report += '## ⚡ Performance Metrics\n\n';
+            report += `- **Performance Score:** ${perf.performance.toFixed(1)}/100\n`;
+            report += `- **First Contentful Paint:** ${perf.fcp.toFixed(0)}ms\n`;
+            report += `- **Largest Contentful Paint:** ${perf.lcp.toFixed(0)}ms\n`;
+            report += `- **Time to Interactive:** ${perf.tti.toFixed(0)}ms\n`;
+            report += `- **Cumulative Layout Shift:** ${perf.cls.toFixed(3)}\n\n`;
+          }
+          
+          // Coverage metrics
+          if (fs.existsSync('current-coverage.json')) {
+            const coverage = JSON.parse(fs.readFileSync('current-coverage.json'));
+            report += '## 📊 Test Coverage\n\n';
+            report += `- **Lines:** ${coverage.lines.toFixed(1)}%\n`;
+            report += `- **Functions:** ${coverage.functions.toFixed(1)}%\n`;
+            report += `- **Branches:** ${coverage.branches.toFixed(1)}%\n`;
+            report += `- **Statements:** ${coverage.statements.toFixed(1)}%\n\n`;
+          }
+          
+          // Bundle size metrics
+          if (fs.existsSync('current-bundle-size.json')) {
+            const bundle = JSON.parse(fs.readFileSync('current-bundle-size.json'));
+            report += '## 📦 Bundle Size\n\n';
+            report += `- **Total Build Size:** ${bundle.totalBuildSize}KB\n`;
+            report += `- **Static Assets Size:** ${bundle.staticAssetsSize}KB\n\n`;
+          }
+          
+          report += '---\n';
+          report += '*This report was automatically generated by the regression detection workflow.*\n';
+          
+          fs.writeFileSync('regression-report.md', report);
+          console.log(report);
+          EOF
+          
+          node generate-report.js
+
+      - name: Upload regression report
+        uses: actions/upload-artifact@v4
+        with:
+          name: regression-report
+          path: regression-report.md
+          retention-days: 90
+
+      - name: Comment on PR with regression report
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            if (fs.existsSync('regression-report.md')) {
+              const report = fs.readFileSync('regression-report.md', 'utf8');
+              github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: report
+              });
+            }
