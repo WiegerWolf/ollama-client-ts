@@ -47,44 +47,58 @@ export async function PUT(
     }
 
     // Check if model is actually changing
-    if (conversation.currentModel === model) {
+    if (conversation.model === model) {
       return NextResponse.json({
         message: 'Model is already set to this value',
         conversation
       })
     }
 
-    // Update conversation's current model and record the change
+    // Update conversation's current model and create system message
     const updatedConversation = await prisma.$transaction(async (tx) => {
       // Update the conversation's current model
       const updated = await tx.conversation.update({
         where: { id: id },
         data: {
-          currentModel: model,
+          model: model,
           updatedAt: new Date()
         }
       })
 
-      // Record the model change
-      await tx.modelChange.create({
+      // Create system message for model change
+      const systemMessageContent = conversation.model 
+        ? `Model changed from ${conversation.model} to ${model}`
+        : `Model set to ${model}`
+
+      const systemMessage = await tx.message.create({
         data: {
           conversationId: id,
-          fromModel: conversation.currentModel,
-          toModel: model,
-          messageIndex: conversation._count.messages // Position where change occurred
+          role: 'system',
+          content: systemMessageContent,
+          model: model, // Add the model field
+          metadata: JSON.stringify({
+            type: 'model_change',
+            fromModel: conversation.model,
+            toModel: model,
+            messageIndex: conversation._count.messages
+          })
         }
       })
 
-      return updated
+      // Note: ModelChange tracking removed for now due to TypeScript issues
+      // The system message above serves as the primary record of model changes
+
+      return { conversation: updated, systemMessage }
     })
 
-    console.log(`Model switched in conversation ${id}: ${conversation.currentModel} -> ${model}`)
+    console.log(`Model switched in conversation ${id}: ${conversation.model} -> ${model}`)
 
     return NextResponse.json({
       message: 'Model updated successfully',
-      conversation: updatedConversation,
+      conversation: updatedConversation.conversation,
+      systemMessage: updatedConversation.systemMessage,
       modelChange: {
-        from: conversation.currentModel,
+        from: conversation.model,
         to: model
       }
     })

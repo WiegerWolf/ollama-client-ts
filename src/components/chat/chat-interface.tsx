@@ -8,7 +8,6 @@ import { ChatMessage } from "@/lib/ollama-client"
 import { formatRelativeTime } from "@/lib/utils"
 import { cn } from "@/lib/utils"
 import { ConversationModelSelector } from "./conversation-model-selector"
-import { ModelChangeNotification } from "@/components/ui/model-change-notification"
 import { ModelBadge } from "@/components/ui/model-badge"
 import { ThinkingSections } from "@/components/ui/thinking-section"
 import { MarkdownRenderer } from "@/components/ui/markdown-renderer"
@@ -19,6 +18,7 @@ interface Message {
   role: string
   content: string
   createdAt: string
+  metadata?: string
 }
 
 export function ChatInterface() {
@@ -40,11 +40,6 @@ export function ChatInterface() {
   const [input, setInput] = useState("")
   const [streamingMessage, setStreamingMessage] = useState("")
   const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null)
-  const [modelChangeNotification, setModelChangeNotification] = useState<{
-    fromModel: string | null
-    toModel: string
-    isVisible: boolean
-  } | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
@@ -57,17 +52,6 @@ export function ChatInterface() {
     scrollToBottom()
   }, [currentConversation?.messages, streamingMessage])
 
-  const handleModelChange = (fromModel: string | null, toModel: string) => {
-    setModelChangeNotification({
-      fromModel,
-      toModel,
-      isVisible: true
-    })
-  }
-
-  const closeModelChangeNotification = () => {
-    setModelChangeNotification(prev => prev ? { ...prev, isVisible: false } : null)
-  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -247,7 +231,6 @@ export function ChatInterface() {
             <span className="text-body-small text-text-secondary">Model:</span>
             <ConversationModelSelector
               conversationId={currentConversation.id}
-              onModelChange={handleModelChange}
             />
           </div>
         </div>
@@ -327,15 +310,6 @@ export function ChatInterface() {
         </div>
       </div>
 
-      {/* Model Change Notification */}
-      {modelChangeNotification && (
-        <ModelChangeNotification
-          fromModel={modelChangeNotification.fromModel}
-          toModel={modelChangeNotification.toModel}
-          isVisible={modelChangeNotification.isVisible}
-          onClose={closeModelChangeNotification}
-        />
-      )}
     </div>
   )
 }
@@ -351,6 +325,7 @@ function MessageBubble({
 }) {
   const { getConversationModel } = useChatStore()
   const isUser = message.role === 'user'
+  const isSystem = message.role === 'system'
   const messageModel = message.model || (conversationId ? getConversationModel(conversationId) : undefined)
   
   // Parse content to extract thinking sections and detect markdown
@@ -373,6 +348,34 @@ function MessageBubble({
   }
   
   const hasThinking = thinkingSections.length > 0 || (partialThinking && partialThinking.trim())
+  
+  // Special rendering for system messages
+  if (isSystem) {
+    // Parse metadata to get model change info
+    let metadata: any = {}
+    try {
+      if (message.metadata) {
+        metadata = JSON.parse(message.metadata)
+      }
+    } catch (e) {
+      // Ignore parsing errors
+    }
+
+    return (
+      <div className="flex justify-center my-md">
+        <div className="flex items-center space-xs px-md py-xs bg-bg-tertiary border border-border-secondary rounded-full text-body-small text-text-tertiary">
+          <span>{message.content}</span>
+          {metadata.type === 'model_change' && metadata.fromModel && metadata.toModel && (
+            <div className="flex items-center space-xs ml-xs">
+              <ModelBadge model={metadata.fromModel} size="sm" variant="compact" />
+              <span>→</span>
+              <ModelBadge model={metadata.toModel} size="sm" variant="compact" />
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
   
   return (
     <div className={cn("flex", isUser ? "justify-end" : "justify-start")}>

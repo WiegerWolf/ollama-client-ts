@@ -9,12 +9,10 @@ import { ModelBadge } from "@/components/ui/model-badge"
 
 interface ConversationModelSelectorProps {
   conversationId: string
-  onModelChange?: (fromModel: string | null, toModel: string) => void
 }
 
-export function ConversationModelSelector({ 
-  conversationId, 
-  onModelChange 
+export function ConversationModelSelector({
+  conversationId
 }: ConversationModelSelectorProps) {
   const {
     models,
@@ -25,7 +23,8 @@ export function ConversationModelSelector({
     setModelChangeLoading,
     currentConversation,
     updateConversation,
-    addModelChange
+    addModelChange,
+    addMessage
   } = useChatStore()
   
   const [isOpen, setIsOpen] = useState(false)
@@ -116,8 +115,15 @@ export function ConversationModelSelector({
         })
       }
 
-      // Notify parent component
-      onModelChange?.(previousModel, modelName)
+      // Add system message to chat if one was created
+      if (data.systemMessage) {
+        addMessage(conversationId, {
+          conversationId,
+          role: 'system',
+          content: data.systemMessage.content,
+          metadata: data.systemMessage.metadata
+        })
+      }
       
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error'
