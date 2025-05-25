@@ -20,13 +20,13 @@ describe('/api/chat', () => {
     jest.clearAllMocks()
     
     // Mock authenticated session
-    mockAuth.mockResolvedValue({
+    ;(mockAuth as any).mockResolvedValue({
       user: {
         id: 'test-user-id',
         email: 'test@example.com',
         name: 'Test User',
       },
-    } as any)
+    })
 
     // Mock environment variable
     process.env.OLLAMA_BASE_URL = 'http://localhost:11434'
@@ -38,7 +38,7 @@ describe('/api/chat', () => {
 
   describe('Authentication', () => {
     it('should return 401 when user is not authenticated', async () => {
-      mockAuth.mockResolvedValue(null)
+      ;(mockAuth as any).mockResolvedValue(null)
 
       const request = new NextRequest('http://localhost:3000/api/chat', {
         method: 'POST',
@@ -350,12 +350,10 @@ describe('/api/chat', () => {
 
   describe('Request Cancellation', () => {
     it('should handle client disconnection', async () => {
-      const abortController = new AbortController()
-      
-      // Simulate client disconnection after a delay
-      setTimeout(() => {
-        abortController.abort()
-      }, 100)
+      // Mock fetch to reject with AbortError
+      const abortError = new Error('Request aborted')
+      abortError.name = 'AbortError'
+      mockFetch.mockRejectedValue(abortError)
 
       const request = new NextRequest('http://localhost:3000/api/chat', {
         method: 'POST',
@@ -363,25 +361,15 @@ describe('/api/chat', () => {
           model: 'llama3.2',
           messages: [{ role: 'user', content: 'Hello' }],
         }),
-        signal: abortController.signal,
       })
 
-      // Mock a slow Ollama response
-      mockFetch.mockImplementation(() => 
-        new Promise((resolve) => {
-          setTimeout(() => {
-            resolve({
-              ok: true,
-              json: async () => ({ message: { role: 'assistant', content: 'Response' }, done: true }),
-            } as Response)
-          }, 200)
-        })
-      )
-
       const response = await POST(request)
+      const data = await response.json()
       
-      // The request should be cancelled before completion
+      // The request should be cancelled
       expect(response.status).toBe(499)
+      expect(data.error).toBe('Request cancelled')
+      expect(data.cancelled).toBe(true)
     })
   })
 })

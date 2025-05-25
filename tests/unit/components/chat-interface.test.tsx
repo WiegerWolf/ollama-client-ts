@@ -61,7 +61,7 @@ describe('ChatInterface', () => {
       
       // The component should show welcome message when no conversation
       expect(screen.getByText('Welcome to Ollama Chat')).toBeTruthy()
-      expect(screen.getByText('Select a conversation or create a new one to start chatting with AI models')).toBeTruthy()
+      expect(screen.getByText('Start typing below to begin your first conversation with an AI model.')).toBeTruthy()
     })
   })
 
