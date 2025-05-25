@@ -52,6 +52,13 @@ export function ChatInterface() {
     scrollToBottom()
   }, [currentConversation?.messages, streamingMessage])
 
+  // Auto-focus the input when component mounts or conversation changes
+  useEffect(() => {
+    if (textareaRef.current && !isStreaming) {
+      textareaRef.current.focus()
+    }
+  }, [currentConversation?.id, isStreaming])
+
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -68,6 +75,13 @@ export function ChatInterface() {
     setInput("")
     setIsStreaming(true)
     setIsCancelling(false)
+
+    // Maintain focus on input after sending
+    setTimeout(() => {
+      if (textareaRef.current) {
+        textareaRef.current.focus()
+      }
+    }, 100)
 
     // Create new AbortController for this request
     const abortController = new AbortController()
@@ -176,6 +190,13 @@ export function ChatInterface() {
       setIsStreaming(false)
       setIsCancelling(false)
       abortControllerRef.current = null
+      
+      // Ensure input is re-enabled and focused
+      setTimeout(() => {
+        if (textareaRef.current) {
+          textareaRef.current.focus()
+        }
+      }, 100)
     }
   }
 
@@ -236,6 +257,11 @@ export function ChatInterface() {
 
   return (
     <div className="flex-1 flex flex-col bg-bg-primary h-full">
+      {/* Screen reader status announcements */}
+      <div role="status" aria-live="polite" className="sr-only">
+        {isStreaming && "AI is typing..."}
+        {isCancelling && "Response cancelled"}
+      </div>
       {/* Header with Model Selector */}
       <div className="border-b border-border-primary bg-bg-primary px-2xl py-md">
         <div className="max-w-[800px] mx-auto flex items-center justify-between">
@@ -258,7 +284,7 @@ export function ChatInterface() {
       </div>
 
       {/* Messages Container */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto" data-testid="messages-container">
         <div className="max-w-[800px] mx-auto px-2xl py-lg">
           {!currentConversation ? (
             <div className="flex-1 flex items-center justify-center">
@@ -270,8 +296,15 @@ export function ChatInterface() {
                   Welcome to Ollama Chat
                 </h2>
                 <p className="text-text-secondary mb-8">
-                  Start typing below to begin your first conversation with an AI model.
+                  Start typing below to begin your conversation with an AI model.
                 </p>
+                <Button
+                  onClick={createNewConversation}
+                  className="mx-auto"
+                  variant="default"
+                >
+                  Start your first conversation
+                </Button>
               </div>
             </div>
           ) : (
@@ -298,6 +331,25 @@ export function ChatInterface() {
                   isStreaming={true}
                 />
               )}
+              
+              {/* Streaming indicator when no content yet */}
+              {isStreaming && !streamingMessage && (
+                <div className="flex justify-start">
+                  <div className="flex max-w-[85%] space-md">
+                    <div className="flex h-10 w-10 shrink-0 select-none items-center justify-center rounded-full border-2 bg-bg-secondary border-border-primary text-text-secondary">
+                      <Bot className="h-4 w-4" />
+                    </div>
+                    <div className="flex flex-col space-y-sm max-w-full">
+                      <div className="rounded-lg px-lg py-md shadow-sm border bg-bg-secondary border-border-primary text-text-primary">
+                        <div className="text-body-medium leading-relaxed">
+                          <span className="text-text-secondary">AI is typing</span>
+                          <span className="inline-block w-2 h-4 bg-current animate-pulse ml-1 rounded-sm" />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
           <div ref={messagesEndRef} />
@@ -319,6 +371,8 @@ export function ChatInterface() {
                 rows={1}
                 style={{ minHeight: '44px', maxHeight: '120px' }}
                 disabled={isStreaming}
+                aria-label="Message input"
+                data-testid="message-input"
               />
             </div>
             {isStreaming ? (
@@ -328,6 +382,8 @@ export function ChatInterface() {
                 disabled={isCancelling}
                 className="px-lg py-md h-11 focus-ring bg-red-600 hover:bg-red-700 text-white border-red-600 hover:border-red-700"
                 variant="default"
+                aria-label={isCancelling ? "Stopping..." : "Stop generation"}
+                data-testid="stop-button"
               >
                 <Square className="h-4 w-4" />
                 <span className="sr-only">{isCancelling ? "Stopping..." : "Stop generation"}</span>
@@ -338,6 +394,8 @@ export function ChatInterface() {
                 disabled={!input.trim()}
                 className="px-lg py-md h-11 focus-ring"
                 variant={!input.trim() ? "secondary" : "default"}
+                aria-label="Send message"
+                data-testid="send-button"
               >
                 <Send className="h-4 w-4" />
                 <span className="sr-only">Send message</span>

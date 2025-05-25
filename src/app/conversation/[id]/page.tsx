@@ -99,12 +99,12 @@ export default function ConversationPage() {
           <p className="text-text-secondary mb-6">
             The conversation you're looking for doesn't exist or has been deleted.
           </p>
-          <button
-            onClick={() => router.push('/')}
-            className="px-4 py-2 bg-primary-blue text-white rounded-lg hover:bg-primary-blue/90 transition-colors"
+          <a
+            href="/"
+            className="inline-block px-4 py-2 bg-primary-blue text-white rounded-lg hover:bg-primary-blue/90 transition-colors"
           >
-            Go to Home
-          </button>
+            Back to conversations
+          </a>
         </div>
       </div>
     )

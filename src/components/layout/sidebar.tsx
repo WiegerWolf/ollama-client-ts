@@ -219,6 +219,7 @@ export function Sidebar() {
                   e.preventDefault()
                 }
               }}
+              data-testid={`conversation-${conversation.id}`}
             >
               <div className="flex items-center space-md flex-1 min-w-0">
                 <MessageSquare className="h-4 w-4 text-text-secondary flex-shrink-0" />
@@ -290,6 +291,7 @@ export function Sidebar() {
                         startEditingTitle(conversation, e)
                       }}
                       aria-label={`Edit title: ${conversation.title}`}
+                      data-testid={`edit-title-${conversation.id}`}
                     >
                       <Edit2 className="h-3 w-3" />
                     </Button>
@@ -317,13 +319,15 @@ export function Sidebar() {
   }
 
   return (
-    <div className="h-full bg-bg-tertiary border-r border-border-primary flex flex-col shadow-light">
+    <nav className="h-full bg-bg-tertiary border-r border-border-primary flex flex-col shadow-light" aria-label="Conversations">
       {/* Header Section */}
       <div className="p-lg border-b border-border-primary bg-bg-secondary">
         <Button
           onClick={createNewConversation}
           className="w-full justify-start h-11 focus-ring mb-md"
           variant="default"
+          aria-label="New conversation"
+          data-testid="new-conversation-button"
         >
           <Plus className="h-4 w-4 mr-md" />
           New Conversation
@@ -338,6 +342,8 @@ export function Sidebar() {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full pl-10 pr-10 py-sm bg-bg-primary border border-border-primary rounded-lg text-body-medium text-text-primary placeholder-text-tertiary focus:outline-none focus:ring-2 focus:ring-primary-blue focus:border-transparent"
+            aria-label="Search conversations"
+            data-testid="search-conversations"
           />
           {searchQuery && (
             <button
@@ -388,6 +394,13 @@ export function Sidebar() {
                 <p className="text-body-small text-text-tertiary mt-xs">
                   Create your first conversation to get started
                 </p>
+                <Button
+                  onClick={createNewConversation}
+                  className="mt-lg"
+                  variant="default"
+                >
+                  Start your first conversation
+                </Button>
               </>
             )}
           </div>
@@ -417,6 +430,6 @@ export function Sidebar() {
           </div>
         </div>
       </div>
-    </div>
+    </nav>
   )
 }

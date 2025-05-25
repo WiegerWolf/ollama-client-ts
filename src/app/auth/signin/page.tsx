@@ -84,7 +84,7 @@ export default function SignIn() {
           </p>
         </div>
 
-        <form className="space-y-6" onSubmit={handleSubmit}>
+        <form className="space-y-6" onSubmit={handleSubmit} aria-label="Sign in form">
           <div>
             <label htmlFor="email" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
               Email

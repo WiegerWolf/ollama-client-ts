@@ -150,9 +150,10 @@ export function ConversationModelSelector({
         onClick={() => setIsOpen(!isOpen)}
         disabled={modelChangeLoading}
         className="flex items-center space-xs px-md py-xs h-auto bg-bg-secondary border border-border-primary hover:bg-bg-tertiary focus-ring"
-        aria-label="Change conversation model"
+        aria-label="Model selector"
         aria-expanded={isOpen}
         aria-haspopup="listbox"
+        data-testid="model-selector"
       >
         {modelChangeLoading ? (
           <>
