@@ -46,7 +46,7 @@ test.describe('Conversation Management', () => {
     
     // Should show empty conversation state
     await expect(page.getByText(/start a new conversation/i)).toBeVisible()
-    await expect(page.getByPlaceholderText(/type your message/i)).toBeVisible()
+    await expect(page.getByPlaceholder(/type your message/i)).toBeVisible()
   })
 
   test('should list existing conversations', async ({ page }) => {
@@ -217,7 +217,7 @@ test.describe('Conversation Management', () => {
     await page.getByRole('button', { name: /edit title/i }).click()
     
     // Should show title input
-    const titleInput = page.getByDisplayValue('Original Title')
+    const titleInput = page.locator('input[value="Original Title"]')
     await expect(titleInput).toBeVisible()
     
     // Edit the title
@@ -302,7 +302,7 @@ test.describe('Conversation Management', () => {
     })
 
     // Type in search box
-    const searchInput = page.getByPlaceholderText(/search conversations/i)
+    const searchInput = page.getByPlaceholder(/search conversations/i)
     await searchInput.fill('JavaScript')
     
     // Should filter conversations

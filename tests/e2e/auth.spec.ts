@@ -33,7 +33,7 @@ test.describe('Authentication', () => {
     
     // Should show main chat interface
     await expect(page.getByText(/new conversation/i)).toBeVisible()
-    await expect(page.getByPlaceholderText(/type your message/i)).toBeVisible()
+    await expect(page.locator('input[placeholder*="type your message" i], textarea[placeholder*="type your message" i]')).toBeVisible()
   })
 
   test('should reject invalid credentials', async ({ page }) => {
@@ -68,7 +68,7 @@ test.describe('Authentication', () => {
     
     // Should still be authenticated and on main app
     await expect(page).toHaveURL('/')
-    await expect(page.getByPlaceholderText(/type your message/i)).toBeVisible()
+    await expect(page.locator('input[placeholder*="type your message" i], textarea[placeholder*="type your message" i]')).toBeVisible()
   })
 
   test('should allow user to sign out', async ({ page }) => {

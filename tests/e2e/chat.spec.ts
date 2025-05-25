@@ -53,7 +53,7 @@ test.describe('Chat Functionality', () => {
     })
 
     // Type a message
-    const messageInput = page.getByPlaceholderText(/type your message/i)
+    const messageInput = page.getByPlaceholder(/type your message/i)
     await messageInput.fill('Hello, how are you?')
     
     // Send the message
@@ -84,7 +84,7 @@ test.describe('Chat Functionality', () => {
     })
 
     // Type and send a message
-    await page.getByPlaceholderText(/type your message/i).fill('Test message')
+    await page.getByPlaceholder(/type your message/i).fill('Test message')
     await page.getByRole('button', { name: /send/i }).click()
     
     // Should show streaming indicator
@@ -105,7 +105,7 @@ test.describe('Chat Functionality', () => {
   })
 
   test('should handle keyboard shortcuts', async ({ page }) => {
-    const messageInput = page.getByPlaceholderText(/type your message/i)
+    const messageInput = page.getByPlaceholder(/type your message/i)
     
     // Test Enter to send
     await messageInput.fill('Test message')
@@ -125,7 +125,7 @@ test.describe('Chat Functionality', () => {
 
   test('should show message timestamps', async ({ page }) => {
     // Send a message first
-    await page.getByPlaceholderText(/type your message/i).fill('Test message')
+    await page.getByPlaceholder(/type your message/i).fill('Test message')
     await page.getByRole('button', { name: /send/i }).click()
     
     // Should show timestamp
@@ -148,7 +148,7 @@ test.describe('Chat Functionality', () => {
       })
     })
 
-    await page.getByPlaceholderText(/type your message/i).fill('Show me some markdown')
+    await page.getByPlaceholder(/type your message/i).fill('Show me some markdown')
     await page.getByRole('button', { name: /send/i }).click()
     
     // Should render bold text
@@ -172,7 +172,7 @@ test.describe('Chat Functionality', () => {
       })
     })
 
-    await page.getByPlaceholderText(/type your message/i).fill('Think about something')
+    await page.getByPlaceholder(/type your message/i).fill('Think about something')
     await page.getByRole('button', { name: /send/i }).click()
     
     // Should show thinking section toggle
@@ -194,7 +194,7 @@ test.describe('Chat Functionality', () => {
       })
     })
 
-    await page.getByPlaceholderText(/type your message/i).fill('Test message')
+    await page.getByPlaceholder(/type your message/i).fill('Test message')
     await page.getByRole('button', { name: /send/i }).click()
     
     // Should show error message
@@ -207,7 +207,7 @@ test.describe('Chat Functionality', () => {
       route.abort('failed')
     })
 
-    await page.getByPlaceholderText(/type your message/i).fill('Test message')
+    await page.getByPlaceholder(/type your message/i).fill('Test message')
     await page.getByRole('button', { name: /send/i }).click()
     
     // Should show network error
@@ -217,7 +217,7 @@ test.describe('Chat Functionality', () => {
   test('should auto-scroll to bottom on new messages', async ({ page }) => {
     // Add multiple messages to create scrollable content
     for (let i = 0; i < 10; i++) {
-      await page.getByPlaceholderText(/type your message/i).fill(`Message ${i + 1}`)
+      await page.getByPlaceholder(/type your message/i).fill(`Message ${i + 1}`)
       await page.getByRole('button', { name: /send/i }).click()
       await page.waitForTimeout(100) // Small delay between messages
     }
@@ -237,14 +237,14 @@ test.describe('Chat Functionality', () => {
     await expect(sendButton).toBeDisabled()
     
     // Type whitespace only
-    await page.getByPlaceholderText(/type your message/i).fill('   ')
+    await page.getByPlaceholder(/type your message/i).fill('   ')
     
     // Send button should still be disabled
     await expect(sendButton).toBeDisabled()
   })
 
   test('should maintain focus on input after sending', async ({ page }) => {
-    const messageInput = page.getByPlaceholderText(/type your message/i)
+    const messageInput = page.getByPlaceholder(/type your message/i)
     
     await messageInput.fill('Test message')
     await page.getByRole('button', { name: /send/i }).click()
@@ -255,12 +255,12 @@ test.describe('Chat Functionality', () => {
 
   test('should be accessible', async ({ page }) => {
     // Check ARIA labels
-    await expect(page.getByLabelText(/message input/i)).toBeVisible()
+    await expect(page.getByLabel(/message input/i)).toBeVisible()
     await expect(page.getByRole('button', { name: /send message/i })).toBeVisible()
     
     // Check keyboard navigation
     await page.keyboard.press('Tab')
-    await expect(page.getByPlaceholderText(/type your message/i)).toBeFocused()
+    await expect(page.getByPlaceholder(/type your message/i)).toBeFocused()
     
     await page.keyboard.press('Tab')
     await expect(page.getByRole('button', { name: /send/i })).toBeFocused()
@@ -279,7 +279,7 @@ test.describe('Chat Functionality', () => {
       })
     })
 
-    const messageInput = page.getByPlaceholderText(/type your message/i)
+    const messageInput = page.getByPlaceholder(/type your message/i)
     const sendButton = page.getByRole('button', { name: /send/i })
     
     // Send multiple messages quickly

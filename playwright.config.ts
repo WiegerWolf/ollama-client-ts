@@ -5,6 +5,9 @@ import { defineConfig, devices } from '@playwright/test'
  */
 export default defineConfig({
   testDir: './tests/e2e',
+  /* Global setup and teardown */
+  globalSetup: require.resolve('./tests/global-setup'),
+  globalTeardown: require.resolve('./tests/global-teardown'),
   /* Run tests in files in parallel */
   fullyParallel: true,
   /* Fail the build on CI if you accidentally left test.only in the source code. */
@@ -28,6 +31,11 @@ export default defineConfig({
     
     /* Record video on failure */
     video: 'retain-on-failure',
+    
+    /* Set test environment variables */
+    extraHTTPHeaders: {
+      'x-test-mode': 'true'
+    }
   },
 
   /* Configure projects for major browsers */
@@ -60,9 +68,14 @@ export default defineConfig({
 
   /* Run your local dev server before starting the tests */
   webServer: {
-    command: 'bun run dev',
+    command: 'DATABASE_URL=file:./test.db AUTH_SECRET=test-secret-key-for-e2e-tests NEXTAUTH_SECRET=test-secret-key-for-e2e-tests bun run dev',
     url: 'http://localhost:3000',
     reuseExistingServer: !process.env.CI,
     timeout: 120 * 1000,
+    env: {
+      DATABASE_URL: 'file:./test.db',
+      AUTH_SECRET: 'test-secret-key-for-e2e-tests',
+      NEXTAUTH_SECRET: 'test-secret-key-for-e2e-tests'
+    }
   },
 })
