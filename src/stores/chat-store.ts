@@ -136,10 +136,21 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   // Actions
   setCurrentConversation: (conversation, updateUrl = true) => {
+    const currentState = get()
+    
+    // Prevent unnecessary updates if conversation is the same
+    if (currentState.currentConversation?.id === conversation?.id) {
+      return
+    }
+    
     set({ currentConversation: conversation })
+    
     // Load model data when switching conversations
     if (conversation) {
-      get().loadConversationModelData(conversation.id)
+      // Use setTimeout to prevent synchronous state updates
+      setTimeout(() => {
+        get().loadConversationModelData(conversation.id)
+      }, 0)
       
       // Update URL if requested and we're in a browser environment
       if (updateUrl && typeof window !== 'undefined') {
@@ -179,8 +190,19 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   setConversations: (conversations) => {
+    const currentState = get()
+    
+    // Prevent unnecessary updates if conversations are the same
+    if (JSON.stringify(currentState.conversations) === JSON.stringify(conversations)) {
+      return
+    }
+    
     set({ conversations })
-    get().filterConversations()
+    
+    // Use setTimeout to prevent synchronous state updates
+    setTimeout(() => {
+      get().filterConversations()
+    }, 0)
   },
 
   addConversation: (conversation) => 
@@ -310,8 +332,19 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   // Search actions
   setSearchQuery: (query) => {
+    const currentState = get()
+    
+    // Prevent unnecessary updates if query is the same
+    if (currentState.searchQuery === query) {
+      return
+    }
+    
     set({ searchQuery: query })
-    get().filterConversations()
+    
+    // Use setTimeout to prevent synchronous state updates
+    setTimeout(() => {
+      get().filterConversations()
+    }, 0)
   },
 
   filterConversations: () => {
@@ -380,36 +413,37 @@ export const useChatStore = create<ChatState>((set, get) => ({
   setSettingsLoading: (loading) =>
     set({ settingsLoading: loading }),
 
-  addMessage: (conversationId, message) =>
-    set((state) => {
-      // Get the current model for this conversation
-      const currentModel = state.conversationModels[conversationId] ||
-                          state.currentConversation?.currentModel ||
-                          state.selectedModel
+  addMessage: (conversationId, message) => {
+    const state = get()
+    
+    // Get the current model for this conversation
+    const currentModel = state.conversationModels[conversationId] ||
+                        state.currentConversation?.currentModel ||
+                        state.selectedModel
 
-      const newMessage: Message = {
-        ...message,
-        id: Math.random().toString(36).substr(2, 9),
-        model: message.model || currentModel,
-        createdAt: new Date().toISOString()
-      }
+    const newMessage: Message = {
+      ...message,
+      id: Math.random().toString(36).substr(2, 9),
+      model: message.model || currentModel,
+      createdAt: new Date().toISOString()
+    }
 
-      return {
-        conversations: state.conversations.map(conv =>
-          conv.id === conversationId
-            ? { ...conv, messages: [...conv.messages, newMessage] }
-            : conv
-        ),
-        currentConversation: state.currentConversation?.id === conversationId
-          ? {
-              ...state.currentConversation,
-              messages: [...state.currentConversation.messages, newMessage]
-            }
-          : state.currentConversation
-      }
-    }),
+    set((state) => ({
+      conversations: state.conversations.map(conv =>
+        conv.id === conversationId
+          ? { ...conv, messages: [...conv.messages, newMessage] }
+          : conv
+      ),
+      currentConversation: state.currentConversation?.id === conversationId
+        ? {
+            ...state.currentConversation,
+            messages: [...state.currentConversation.messages, newMessage]
+          }
+        : state.currentConversation
+    }))
+  },
 
-  updateMessage: (conversationId, messageId, content) =>
+  updateMessage: (conversationId, messageId, content) => {
     set((state) => ({
       conversations: state.conversations.map(conv =>
         conv.id === conversationId
@@ -430,4 +464,5 @@ export const useChatStore = create<ChatState>((set, get) => ({
           }
         : state.currentConversation
     }))
+  }
 }))

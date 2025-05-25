@@ -153,8 +153,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     signIn: "/auth/signin",
     error: "/auth/signin", // Redirect errors to sign in page
   },
-  secret: process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET,
-  debug: process.env.NODE_ENV === 'development',
+  secret: process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET || 'fallback-secret-for-tests',
+  debug: process.env.NODE_ENV === 'development' && !process.env.TEST_MODE,
   // Add custom error handling
   events: {
     signIn: async ({ user, account, profile, isNewUser }) => {

@@ -1,15 +1,79 @@
 import { test, expect } from '@playwright/test'
+import { PrismaClient } from '@prisma/client'
+import { TestCleanup } from '../utils/test-cleanup'
+import { setupMSWInBrowser, resetMSWInBrowser } from '../utils/msw-setup'
 
 test.describe('Conversation Management', () => {
+  let prisma: PrismaClient
+  let testCleanup: TestCleanup
+
+  test.beforeAll(async () => {
+    // Initialize Prisma client for test isolation
+    prisma = new PrismaClient({
+      datasources: {
+        db: {
+          url: process.env.DATABASE_URL
+        }
+      }
+    })
+    
+    // Initialize test cleanup utility
+    testCleanup = new TestCleanup()
+  })
+
+  test.afterAll(async () => {
+    // Disconnect clients
+    await testCleanup.disconnect()
+    await prisma.$disconnect()
+  })
+
   test.beforeEach(async ({ page }) => {
+    // Setup MSW in browser for API mocking
+    await setupMSWInBrowser(page)
+    
+    // Use improved cleanup utility
+    await testCleanup.cleanupGuestUserData()
+    
+    // Validate clean state before proceeding
+    await testCleanup.validateCleanState()
+    
+    // Enforce conversation limits to prevent data pollution
+    await testCleanup.enforceConversationLimit(1)
+
     // Sign in as guest user
     await page.goto('/auth/signin')
     await page.getByLabel(/email/i).fill('guest@example.com')
     await page.getByLabel(/password/i).fill('guest')
     await page.getByRole('button', { name: /sign in/i }).click()
     
-    // Wait for redirect to main app
-    await expect(page).toHaveURL('/')
+    // Wait for redirect - could be to home page or to an existing conversation
+    await page.waitForLoadState('networkidle')
+    
+    // If redirected to a conversation, go to home page to start fresh
+    if (page.url().includes('/conversation/')) {
+      await page.goto('/')
+      await page.waitForLoadState('networkidle')
+    }
+    
+    // Log current data counts for debugging
+    const counts = await testCleanup.getDataCounts()
+    console.log(`📊 Pre-test data counts:`, counts)
+  })
+
+  test.afterEach(async ({ page }) => {
+    // Log final data counts for debugging
+    const counts = await testCleanup.getDataCounts()
+    console.log(`📊 Post-test data counts:`, counts)
+    
+    // Clear browser storage and cookies after each test
+    await page.context().clearCookies()
+    await page.evaluate(() => {
+      localStorage.clear()
+      sessionStorage.clear()
+    })
+    
+    // Clean up any conversations created during the test
+    await testCleanup.cleanupGuestUserData()
   })
 
   test('should create new conversation', async ({ page }) => {
@@ -38,8 +102,8 @@ test.describe('Conversation Management', () => {
       }
     })
 
-    // Click new conversation button
-    await page.getByRole('button', { name: /new conversation/i }).click()
+    // Click new conversation button using specific test ID
+    await page.locator('[data-testid="new-conversation-button"]').click()
     
     // Should create and navigate to new conversation
     await expect(page).toHaveURL(/\/conversation\/new-conv-id/)

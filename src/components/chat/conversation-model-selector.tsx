@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback, memo } from "react"
 import { ChevronDown, Check, AlertCircle, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useChatStore } from "@/stores/chat-store"
@@ -11,7 +11,7 @@ interface ConversationModelSelectorProps {
   conversationId: string
 }
 
-export function ConversationModelSelector({
+export const ConversationModelSelector = memo(function ConversationModelSelector({
   conversationId
 }: ConversationModelSelectorProps) {
   const {
@@ -32,13 +32,7 @@ export function ConversationModelSelector({
   const [isLoadingModels, setIsLoadingModels] = useState(false)
 
   // Fetch models on component mount if not already loaded
-  useEffect(() => {
-    if (models.length === 0) {
-      fetchModels()
-    }
-  }, [models.length])
-
-  const fetchModels = async () => {
+  const fetchModels = useCallback(async () => {
     setIsLoadingModels(true)
     setError(null)
     
@@ -63,12 +57,18 @@ export function ConversationModelSelector({
     } finally {
       setIsLoadingModels(false)
     }
-  }
+  }, [setModels])
+
+  useEffect(() => {
+    if (models.length === 0) {
+      fetchModels()
+    }
+  }, [models.length, fetchModels])
 
   const currentModel = getConversationModel(conversationId)
   const selectedModelData = models.find(model => model.name === currentModel)
 
-  const handleModelSelect = async (modelName: string) => {
+  const handleModelSelect = useCallback(async (modelName: string) => {
     if (modelName === currentModel || modelChangeLoading) return
     
     setIsOpen(false)
@@ -132,7 +132,7 @@ export function ConversationModelSelector({
     } finally {
       setModelChangeLoading(false)
     }
-  }
+  }, [conversationId, currentModel, modelChangeLoading, setModelChangeLoading, setConversationModel, currentConversation, updateConversation, addModelChange, addMessage])
 
   if (error) {
     return (
@@ -231,4 +231,4 @@ export function ConversationModelSelector({
       )}
     </div>
   )
-}
+})

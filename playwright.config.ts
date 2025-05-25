@@ -44,7 +44,11 @@ export default defineConfig({
     
     /* Increase timeout for authentication flows */
     actionTimeout: 15000,
-    navigationTimeout: 30000
+    navigationTimeout: 30000,
+    
+    /* Ignore HTTPS errors and enable service workers for MSW */
+    ignoreHTTPSErrors: true,
+    serviceWorkers: 'allow'
   },
 
   /* Configure projects for major browsers - focus on Chromium for stability */
@@ -91,10 +95,12 @@ export default defineConfig({
     timeout: 120 * 1000,
     env: {
       DATABASE_URL: `file:${path.resolve(process.cwd(), 'test.db')}`,
-      AUTH_SECRET: 'test-secret-key-for-e2e-tests',
-      NEXTAUTH_SECRET: 'test-secret-key-for-e2e-tests',
+      AUTH_SECRET: 'test-secret-key-for-e2e-tests-very-long-and-secure',
+      NEXTAUTH_SECRET: 'test-secret-key-for-e2e-tests-very-long-and-secure',
       NEXTAUTH_URL: 'http://localhost:3000',
-      NODE_ENV: 'test'
+      NODE_ENV: 'test',
+      TEST_MODE: 'true',
+      NEXTAUTH_DEBUG: 'false'
     },
     /* Add stdout/stderr handling for better debugging */
     stdout: 'pipe',

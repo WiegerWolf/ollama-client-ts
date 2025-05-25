@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, useCallback, useMemo, memo } from "react"
 import { Send, Bot, User, Square } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useChatStore } from "@/stores/chat-store"
@@ -40,6 +40,7 @@ export function ChatInterface() {
   const [input, setInput] = useState("")
   const [streamingMessage, setStreamingMessage] = useState("")
   const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null)
+  const [isCreatingConversation, setIsCreatingConversation] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
@@ -48,26 +49,41 @@ export function ChatInterface() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }
 
+  // Memoize scroll function to prevent unnecessary re-renders
+  const scrollToBottomCallback = useCallback(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
+  }, [])
+
+  // Stable dependency array for scroll effect
+  const messagesLength = currentConversation?.messages?.length || 0
   useEffect(() => {
-    scrollToBottom()
-  }, [currentConversation?.messages, streamingMessage])
+    scrollToBottomCallback()
+  }, [messagesLength, streamingMessage, scrollToBottomCallback])
 
   // Auto-focus the input when component mounts or conversation changes
   useEffect(() => {
-    if (textareaRef.current && !isStreaming) {
-      textareaRef.current.focus()
+    if (!isStreaming && textareaRef.current) {
+      // Add a small delay to ensure the component is fully rendered
+      const timer = setTimeout(() => {
+        if (textareaRef.current && !isStreaming) {
+          textareaRef.current.focus()
+        }
+      }, 100)
+      return () => clearTimeout(timer)
     }
   }, [currentConversation?.id, isStreaming])
 
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault()
     
-    if (!input.trim() || isStreaming) return
+    if (!input.trim() || isStreaming || isCreatingConversation) return
 
     // If no current conversation, create one first
     if (!currentConversation) {
-      await createNewConversation()
+      if (!isCreatingConversation) {
+        await createNewConversation()
+      }
       return
     }
 
@@ -77,11 +93,12 @@ export function ChatInterface() {
     setIsCancelling(false)
 
     // Maintain focus on input after sending
-    setTimeout(() => {
-      if (textareaRef.current) {
+    const restoreFocus = () => {
+      if (textareaRef.current && !isStreaming) {
         textareaRef.current.focus()
       }
-    }, 100)
+    }
+    setTimeout(restoreFocus, 100)
 
     // Create new AbortController for this request
     const abortController = new AbortController()
@@ -191,31 +208,32 @@ export function ChatInterface() {
       setIsCancelling(false)
       abortControllerRef.current = null
       
-      // Ensure input is re-enabled and focused
-      setTimeout(() => {
-        if (textareaRef.current) {
+      // Ensure input is re-enabled and focused after streaming completes
+      const restoreFocusAfterStreaming = () => {
+        if (textareaRef.current && !isStreaming) {
           textareaRef.current.focus()
         }
-      }, 100)
+      }
+      setTimeout(restoreFocusAfterStreaming, 150)
     }
-  }
+  }, [input, isStreaming, isCreatingConversation, currentConversation, selectedModel, systemPrompt, temperature, getConversationModel, setIsStreaming, setIsCancelling, addMessage])
 
-  const handleStop = () => {
+  const handleStop = useCallback(() => {
     if (abortControllerRef.current && !isCancelling) {
       setIsCancelling(true)
       cancelGeneration()
       abortControllerRef.current.abort()
     }
-  }
+  }, [isCancelling, cancelGeneration])
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       if (!isStreaming) {
         handleSubmit(e)
       }
     }
-  }
+  }, [isStreaming, handleSubmit])
 
   // Cleanup AbortController on unmount
   useEffect(() => {
@@ -226,7 +244,10 @@ export function ChatInterface() {
     }
   }, [])
 
-  const createNewConversation = async () => {
+  const createNewConversation = useCallback(async () => {
+    if (isCreatingConversation) return
+    
+    setIsCreatingConversation(true)
     try {
       const response = await fetch('/api/conversations', {
         method: 'POST',
@@ -241,17 +262,27 @@ export function ChatInterface() {
 
       if (response.ok) {
         const newConversation = await response.json()
-        // The store should automatically update, and we can retry the submit
+        
+        // Add the conversation to the store and set it as current
+        const { addConversation, setCurrentConversation } = useChatStore.getState()
+        addConversation(newConversation)
+        setCurrentConversation(newConversation)
+        
+        // Now retry the submit with the new conversation
         setTimeout(() => {
           if (input.trim()) {
             handleSubmit(new Event('submit') as any)
           }
         }, 100)
+      } else {
+        console.error('Failed to create conversation:', response.status)
       }
     } catch (error) {
       console.error('Error creating conversation:', error)
+    } finally {
+      setIsCreatingConversation(false)
     }
-  }
+  }, [selectedModel, input, handleSubmit, isCreatingConversation])
 
   // Always show the chat interface, even without a conversation
 
@@ -302,6 +333,7 @@ export function ChatInterface() {
                   onClick={createNewConversation}
                   className="mx-auto"
                   variant="default"
+                  data-testid="start-conversation-button"
                 >
                   Start your first conversation
                 </Button>
@@ -310,7 +342,7 @@ export function ChatInterface() {
           ) : (
             <div className="space-y-lg">
               {currentConversation.messages.map((message) => (
-                <MessageBubble
+                <MemoizedMessageBubble
                   key={message.id}
                   message={message}
                   conversationId={currentConversation.id}
@@ -319,7 +351,7 @@ export function ChatInterface() {
               
               {/* Streaming message */}
               {streamingMessage && (
-                <MessageBubble
+                <MemoizedMessageBubble
                   message={{
                     id: streamingMessageId || 'streaming',
                     role: 'assistant',
@@ -334,7 +366,7 @@ export function ChatInterface() {
               
               {/* Streaming indicator when no content yet */}
               {isStreaming && !streamingMessage && (
-                <div className="flex justify-start">
+                <div className="flex justify-start" data-testid="ai-typing-indicator">
                   <div className="flex max-w-[85%] space-md">
                     <div className="flex h-10 w-10 shrink-0 select-none items-center justify-center rounded-full border-2 bg-bg-secondary border-border-primary text-text-secondary">
                       <Bot className="h-4 w-4" />
@@ -370,7 +402,7 @@ export function ChatInterface() {
                 className="w-full resize-none rounded-lg border-2 border-border-primary bg-bg-primary px-lg py-md text-text-primary placeholder-text-tertiary focus:border-primary-blue focus:outline-none focus:ring-2 focus:ring-primary-blue focus:ring-offset-2 focus:ring-offset-bg-primary transition-all duration-150"
                 rows={1}
                 style={{ minHeight: '44px', maxHeight: '120px' }}
-                disabled={isStreaming}
+                disabled={isStreaming || isCreatingConversation}
                 aria-label="Message input"
                 data-testid="message-input"
               />
@@ -391,9 +423,9 @@ export function ChatInterface() {
             ) : (
               <Button
                 type="submit"
-                disabled={!input.trim()}
+                disabled={!input.trim() || isCreatingConversation}
                 className="px-lg py-md h-11 focus-ring"
-                variant={!input.trim() ? "secondary" : "default"}
+                variant={!input.trim() || isCreatingConversation ? "secondary" : "default"}
                 aria-label="Send message"
                 data-testid="send-button"
               >
@@ -409,7 +441,7 @@ export function ChatInterface() {
   )
 }
 
-function MessageBubble({
+const MessageBubble = memo(function MessageBubble({
   message,
   conversationId,
   isStreaming = false
@@ -551,4 +583,7 @@ function MessageBubble({
       </div>
     </div>
   )
-}
+})
+
+// Memoized version to prevent unnecessary re-renders
+const MemoizedMessageBubble = memo(MessageBubble)

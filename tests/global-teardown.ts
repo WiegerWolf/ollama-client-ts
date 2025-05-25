@@ -2,52 +2,49 @@ import { execSync } from 'child_process'
 import { PrismaClient } from '@prisma/client'
 import path from 'path'
 import fs from 'fs'
+import { stopMockServer } from './mocks/server'
+import { NuclearCleanup } from './utils/nuclear-cleanup'
+import { getGlobalDatabaseIsolation, resetGlobalDatabaseIsolation } from './utils/database-isolation'
 
 async function globalTeardown() {
   console.log('🧹 Cleaning up test environment...')
   
+  // Stop the mock server
+  console.log('🎭 Stopping mock server...')
+  stopMockServer()
+  
+  // Get database isolation instance
+  const dbIsolation = getGlobalDatabaseIsolation()
+  console.log(`🆔 Cleaning up test run: ${dbIsolation.getTestRunId()}`)
+  
   try {
-    // Get test database path
-    const testDbPath = path.resolve(process.cwd(), 'test.db')
-    const testDbUrl = `file:${testDbPath}`
+    // Get database stats before cleanup
+    console.log('📊 Getting database stats before cleanup...')
+    const preCleanupStats = new NuclearCleanup()
+    const beforeStats = await preCleanupStats.getDatabaseStats()
+    await preCleanupStats.disconnect()
     
-    // Create cleanup client and disconnect
-    const cleanupPrisma = new PrismaClient({
-      datasources: {
-        db: {
-          url: testDbUrl
-        }
-      }
-    })
+    console.log('📊 Database state before cleanup:')
+    console.log(`   Users: ${beforeStats.users}`)
+    console.log(`   Conversations: ${beforeStats.conversations}`)
+    console.log(`   Messages: ${beforeStats.messages}`)
+    console.log(`   Sessions: ${beforeStats.sessions}`)
+    console.log(`   Accounts: ${beforeStats.accounts}`)
+    console.log(`   User Settings: ${beforeStats.userSettings}`)
+    console.log(`   Model Changes: ${beforeStats.modelChanges}`)
+    console.log(`   Verification Tokens: ${beforeStats.verificationTokens}`)
+    console.log(`   TOTAL RECORDS: ${beforeStats.total}`)
     
-    console.log('🔌 Disconnecting database connections...')
-    await cleanupPrisma.$disconnect()
+    // Clean up isolated database files
+    console.log('🗑️  Cleaning up isolated database files...')
+    await dbIsolation.cleanupDatabaseFiles()
     
-    // Wait a moment for connections to close
-    await new Promise(resolve => setTimeout(resolve, 1000))
+    console.log('✅ Isolated database cleanup completed successfully')
     
-    // Clean up all test database files
-    const filesToClean = [
-      testDbPath,
-      `${testDbPath}-journal`,
-      `${testDbPath}-wal`,
-      `${testDbPath}-shm`
-    ]
+    // Reset global database isolation
+    resetGlobalDatabaseIsolation()
     
-    let cleanedFiles = 0
-    filesToClean.forEach(file => {
-      if (fs.existsSync(file)) {
-        try {
-          fs.unlinkSync(file)
-          console.log(`🗑️  Cleaned up: ${path.basename(file)}`)
-          cleanedFiles++
-        } catch (error) {
-          console.warn(`⚠️  Could not remove ${file}:`, error)
-        }
-      }
-    })
-    
-    console.log(`✅ Test environment cleanup complete (${cleanedFiles} files removed)`)
+    console.log(`✅ Test environment cleanup complete`)
     
   } catch (error) {
     console.error('❌ Failed to cleanup test environment:', error)

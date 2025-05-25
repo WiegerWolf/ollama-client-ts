@@ -15,7 +15,20 @@ export const handlers = [
   }),
 
   // Conversations endpoints
-  http.get('/api/conversations', () => {
+  http.get('/api/conversations', ({ request }) => {
+    const url = new URL(request.url)
+    const search = url.searchParams.get('search')
+    
+    // Handle search functionality
+    if (search) {
+      const filtered = mockConversations.filter(conv =>
+        conv.title.toLowerCase().includes(search.toLowerCase()) ||
+        conv.messages.some(msg => msg.content.toLowerCase().includes(search.toLowerCase()))
+      )
+      return HttpResponse.json(filtered)
+    }
+    
+    // Return all conversations by default
     return HttpResponse.json(mockConversations)
   }),
 
@@ -116,7 +129,7 @@ export const handlers = [
     return HttpResponse.json(updatedSettings)
   }),
 
-  // Chat endpoint
+  // Chat endpoint with improved streaming for tests
   http.post('/api/chat', async ({ request }) => {
     const body = await request.json() as any
     const { stream = true, messages } = body
@@ -128,9 +141,50 @@ export const handlers = [
       )
     }
     
+    // Check for special test scenarios based on message content
+    const lastMessage = messages[messages.length - 1]?.content || ''
+    
+    // Handle markdown test
+    if (lastMessage.includes('markdown')) {
+      const response = '{"message":{"role":"assistant","content":"**Bold text** and *italic text*\\n\\n```javascript\\nconsole.log(\\"Hello\\");\\n```"},"done":true}'
+      return new HttpResponse(response, {
+        headers: { 'Content-Type': 'text/plain' }
+      })
+    }
+    
+    // Handle thinking test
+    if (lastMessage.includes('think')) {
+      const response = '{"message":{"role":"assistant","content":"<thinking>\\nLet me think about this...\\n</thinking>\\n\\nHere is my response."},"done":true}'
+      return new HttpResponse(response, {
+        headers: { 'Content-Type': 'text/plain' }
+      })
+    }
+    
+    // Handle error simulation
+    if (lastMessage.includes('error')) {
+      return HttpResponse.json(
+        { error: 'Internal server error' },
+        { status: 500 }
+      )
+    }
+    
+    // Handle network error simulation
+    if (lastMessage.includes('network')) {
+      return HttpResponse.error()
+    }
+    
+    // Handle cancellation test (slow response)
+    if (lastMessage.includes('cancel')) {
+      // Simulate slow response
+      await new Promise(resolve => setTimeout(resolve, 5000))
+      return HttpResponse.json(
+        { error: 'Request cancelled', cancelled: true },
+        { status: 499 }
+      )
+    }
+    
     if (stream) {
-      // Return streaming response
-      const encoder = new TextEncoder()
+      // Return streaming response optimized for test environment
       const chunks = [
         '{"message":{"role":"assistant","content":"Hello"},"done":false}',
         '{"message":{"role":"assistant","content":" there"},"done":false}',
@@ -144,20 +198,10 @@ export const handlers = [
         '{"done":true}',
       ]
       
-      const stream = new ReadableStream({
-        start(controller) {
-          chunks.forEach((chunk, index) => {
-            setTimeout(() => {
-              controller.enqueue(encoder.encode(chunk + '\n'))
-              if (index === chunks.length - 1) {
-                controller.close()
-              }
-            }, index * 100)
-          })
-        }
-      })
+      // Return immediate response for Playwright compatibility
+      const responseBody = chunks.join('\n')
       
-      return new HttpResponse(stream, {
+      return new HttpResponse(responseBody, {
         headers: {
           'Content-Type': 'text/plain',
           'Cache-Control': 'no-cache',

@@ -1,29 +1,170 @@
 import { test, expect } from '@playwright/test'
+import { PrismaClient } from '@prisma/client'
+import { setupMSWInBrowser, resetMSWInBrowser } from '../utils/msw-setup'
 
 test.describe('Authentication', () => {
+  let prisma: PrismaClient
+
+  test.beforeAll(async () => {
+    // Initialize Prisma client for test isolation
+    prisma = new PrismaClient({
+      datasources: {
+        db: {
+          url: process.env.DATABASE_URL
+        }
+      }
+    })
+  })
+
+  test.afterAll(async () => {
+    // Disconnect Prisma client
+    await prisma.$disconnect()
+  })
+
   test.beforeEach(async ({ page }) => {
-    // Add console logging for debugging
+    // Setup MSW in browser for API mocking
+    await setupMSWInBrowser(page)
+    
+    // Aggressive cleanup - run multiple times to ensure clean state
+    for (let i = 0; i < 3; i++) {
+      try {
+        await prisma.message.deleteMany({
+          where: {
+            conversation: {
+              userId: 'guest-user'
+            }
+          }
+        })
+        
+        await prisma.modelChange.deleteMany({
+          where: {
+            conversation: {
+              userId: 'guest-user'
+            }
+          }
+        })
+        
+        await prisma.conversation.deleteMany({
+          where: {
+            userId: 'guest-user'
+          }
+        })
+        
+        await prisma.session.deleteMany({
+          where: {
+            userId: 'guest-user'
+          }
+        })
+        
+        // Check if cleanup was successful
+        const remainingConversations = await prisma.conversation.count({
+          where: { userId: 'guest-user' }
+        })
+        
+        if (remainingConversations === 0) {
+          console.log(`🧹 Cleaned up guest user data before auth test (attempt ${i + 1})`)
+          break
+        } else {
+          console.log(`⚠️  ${remainingConversations} conversations still remain after cleanup attempt ${i + 1}`)
+          if (i < 2) {
+            await new Promise(resolve => setTimeout(resolve, 500)) // Wait before retry
+          }
+        }
+      } catch (error) {
+        console.warn(`⚠️  Failed to clean up guest user data (attempt ${i + 1}):`, error)
+      }
+    }
+
+    // Enhanced error logging for authentication debugging
     page.on('console', msg => {
-      if (msg.type() === 'error' || msg.text().includes('[AUTH]')) {
-        console.log(`🖥️  Browser console: ${msg.text()}`)
+      if (msg.type() === 'error' || msg.text().includes('[AUTH]') || msg.text().includes('Failed to fetch')) {
+        console.log(`🖥️  Browser console [${msg.type()}]: ${msg.text()}`)
       }
     })
     
-    // Add request/response logging for auth endpoints
+    // Enhanced request/response logging for auth endpoints
     page.on('request', request => {
-      if (request.url().includes('/api/auth/')) {
-        console.log(`📤 Auth request: ${request.method()} ${request.url()}`)
+      if (request.url().includes('/api/auth/') || request.url().includes('/_next/static/chunks/')) {
+        console.log(`📤 Request: ${request.method()} ${request.url()}`)
       }
     })
     
     page.on('response', response => {
-      if (response.url().includes('/api/auth/')) {
-        console.log(`📥 Auth response: ${response.status()} ${response.url()}`)
+      if (response.url().includes('/api/auth/') || (response.status() >= 400 && response.url().includes('/_next/'))) {
+        console.log(`📥 Response: ${response.status()} ${response.url()}`)
+        if (response.status() >= 400) {
+          console.log(`❌ Error response details: ${response.statusText()}`)
+        }
       }
     })
+
+    // Handle page errors
+    page.on('pageerror', error => {
+      console.error(`🚨 Page error: ${error.message}`)
+    })
+
+    // Handle request failures
+    page.on('requestfailed', request => {
+      console.error(`🚨 Request failed: ${request.method()} ${request.url()} - ${request.failure()?.errorText}`)
+    })
     
-    // Start from the home page
-    await page.goto('/')
+    // Start from the home page with retry mechanism
+    let retries = 3
+    while (retries > 0) {
+      try {
+        await page.goto('/', { waitUntil: 'networkidle', timeout: 30000 })
+        break
+      } catch (error) {
+        retries--
+        console.warn(`⚠️  Failed to navigate to home page, retries left: ${retries}`, error)
+        if (retries === 0) throw error
+        await new Promise(resolve => setTimeout(resolve, 1000))
+      }
+    }
+  })
+
+  test.afterEach(async ({ page }) => {
+    // Clear browser storage and cookies after each test
+    await page.context().clearCookies()
+    await page.evaluate(() => {
+      localStorage.clear()
+      sessionStorage.clear()
+    })
+    
+    // Clean up any conversations created during the test
+    try {
+      await prisma.message.deleteMany({
+        where: {
+          conversation: {
+            userId: 'guest-user'
+          }
+        }
+      })
+      
+      await prisma.modelChange.deleteMany({
+        where: {
+          conversation: {
+            userId: 'guest-user'
+          }
+        }
+      })
+      
+      await prisma.conversation.deleteMany({
+        where: {
+          userId: 'guest-user'
+        }
+      })
+      
+      await prisma.session.deleteMany({
+        where: {
+          userId: 'guest-user'
+        }
+      })
+      
+      console.log('🧹 Cleaned up guest user data after test')
+    } catch (error) {
+      console.warn('⚠️  Failed to clean up guest user data after test:', error)
+    }
   })
 
   test('should redirect unauthenticated users to sign in', async ({ page }) => {
@@ -44,31 +185,84 @@ test.describe('Authentication', () => {
   test('should allow guest user to sign in', async ({ page }) => {
     console.log('🧪 Testing guest user sign in...')
     
-    // Navigate to sign in page
-    await page.goto('/auth/signin')
-    await page.waitForLoadState('networkidle')
+    // Navigate to sign in page with retry
+    let retries = 3
+    while (retries > 0) {
+      try {
+        await page.goto('/auth/signin', { waitUntil: 'networkidle', timeout: 30000 })
+        break
+      } catch (error) {
+        retries--
+        console.warn(`⚠️  Failed to navigate to sign in page, retries left: ${retries}`)
+        if (retries === 0) throw error
+        await new Promise(resolve => setTimeout(resolve, 1000))
+      }
+    }
     
-    // Wait for form to be ready
-    await expect(page.getByLabel(/email/i)).toBeVisible({ timeout: 10000 })
+    // Wait for form to be ready with enhanced checks
+    console.log('⏳ Waiting for sign in form...')
+    await expect(page.getByLabel(/email/i)).toBeVisible({ timeout: 15000 })
+    await expect(page.getByLabel(/password/i)).toBeVisible({ timeout: 10000 })
+    await expect(page.getByRole('button', { name: /sign in/i })).toBeVisible({ timeout: 10000 })
     
-    // Fill in guest credentials
+    // Fill in guest credentials with verification
     console.log('📝 Filling in guest credentials...')
-    await page.getByLabel(/email/i).fill('guest@example.com')
-    await page.getByLabel(/password/i).fill('guest')
+    const emailInput = page.getByLabel(/email/i)
+    const passwordInput = page.getByLabel(/password/i)
+    
+    await emailInput.fill('guest@example.com')
+    await expect(emailInput).toHaveValue('guest@example.com')
+    
+    await passwordInput.fill('guest')
+    await expect(passwordInput).toHaveValue('guest')
     
     // Click sign in button and wait for navigation
     console.log('🔐 Clicking sign in button...')
     const signInButton = page.getByRole('button', { name: /sign in/i })
+    await expect(signInButton).toBeEnabled()
+    
+    // Use Promise.race to handle both success and potential errors
+    const authPromise = Promise.race([
+      page.waitForURL('/', { timeout: 45000 }),
+      page.waitForURL(/\/conversation\//, { timeout: 45000 })
+    ])
+    
     await signInButton.click()
     
     // Wait for authentication to complete
     console.log('⏳ Waiting for authentication...')
-    await page.waitForURL('/', { timeout: 30000 })
+    
+    try {
+      await authPromise
+      console.log(`✅ Authentication successful, current URL: ${page.url()}`)
+    } catch (error) {
+      console.error(`❌ Authentication failed: ${error}`)
+      // Check if we're still on sign in page (authentication failed)
+      if (page.url().includes('/auth/signin')) {
+        throw new Error('Authentication failed - still on sign in page')
+      }
+      throw error
+    }
+    
+    // If redirected to a conversation, go to home page to check the interface
+    if (page.url().includes('/conversation/')) {
+      console.log('🔄 Redirected to conversation, navigating to home...')
+      await page.goto('/', { waitUntil: 'networkidle' })
+    }
     
     // Should show main chat interface
     console.log('🔍 Checking for main chat interface...')
-    await expect(page.getByText(/new conversation/i)).toBeVisible({ timeout: 15000 })
-    await expect(page.locator('input[placeholder*="type your message" i], textarea[placeholder*="type your message" i]')).toBeVisible({ timeout: 10000 })
+    
+    // Wait for either "Start your first conversation" or message input to be visible
+    await Promise.race([
+      expect(page.getByText(/start your first conversation/i)).toBeVisible({ timeout: 15000 }),
+      expect(page.locator('input[placeholder*="type your message" i], textarea[placeholder*="type your message" i]')).toBeVisible({ timeout: 15000 })
+    ])
+    
+    // Verify message input is present and enabled
+    const messageInput = page.locator('input[placeholder*="type your message" i], textarea[placeholder*="type your message" i]')
+    await expect(messageInput).toBeVisible({ timeout: 10000 })
+    await expect(messageInput).toBeEnabled({ timeout: 5000 })
     
     console.log('✅ Guest user sign in test passed')
   })

@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useCallback, memo } from "react"
 import { Plus, MessageSquare, Trash2, Settings, User, Search, X, Edit2, Check, X as XIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useChatStore } from "@/stores/chat-store"
@@ -52,9 +52,9 @@ export function Sidebar() {
 
   useEffect(() => {
     fetchConversations()
-  }, [])
+  }, []) // Empty dependency array is correct here
 
-  const fetchConversations = async () => {
+  const fetchConversations = useCallback(async () => {
     try {
       const response = await fetch('/api/conversations')
       if (response.ok) {
@@ -66,9 +66,9 @@ export function Sidebar() {
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [setConversations])
 
-  const createNewConversation = async () => {
+  const createNewConversation = useCallback(async () => {
     try {
       const response = await fetch('/api/conversations', {
         method: 'POST',
@@ -90,9 +90,9 @@ export function Sidebar() {
     } catch (error) {
       console.error('Error creating conversation:', error)
     }
-  }
+  }, [selectedModel, router, fetchConversations])
 
-  const handleDeleteConversation = async (id: string, e: React.MouseEvent) => {
+  const handleDeleteConversation = useCallback(async (id: string, e: React.MouseEvent) => {
     e.stopPropagation()
     
     try {
@@ -106,25 +106,25 @@ export function Sidebar() {
     } catch (error) {
       console.error('Error deleting conversation:', error)
     }
-  }
+  }, [deleteConversation])
 
-  const selectConversation = (conversation: Conversation) => {
+  const selectConversation = useCallback((conversation: Conversation) => {
     // Navigate to the conversation URL
     router.push(`/conversation/${conversation.id}`)
-  }
+  }, [router])
 
-  const startEditingTitle = (conversation: Conversation, e: React.MouseEvent) => {
+  const startEditingTitle = useCallback((conversation: Conversation, e: React.MouseEvent) => {
     e.stopPropagation()
     setEditingId(conversation.id)
     setEditingTitle(conversation.title)
-  }
+  }, [])
 
-  const cancelEditingTitle = () => {
+  const cancelEditingTitle = useCallback(() => {
     setEditingId(null)
     setEditingTitle('')
-  }
+  }, [])
 
-  const saveTitle = async (conversationId: string) => {
+  const saveTitle = useCallback(async (conversationId: string) => {
     if (!editingTitle.trim()) {
       cancelEditingTitle()
       return
@@ -150,15 +150,15 @@ export function Sidebar() {
       console.error('Error updating conversation title:', error)
       cancelEditingTitle()
     }
-  }
+  }, [editingTitle, updateConversation, cancelEditingTitle])
 
-  const handleTitleKeyPress = (e: React.KeyboardEvent, conversationId: string) => {
+  const handleTitleKeyPress = useCallback((e: React.KeyboardEvent, conversationId: string) => {
     if (e.key === 'Enter') {
       saveTitle(conversationId)
     } else if (e.key === 'Escape') {
       cancelEditingTitle()
     }
-  }
+  }, [saveTitle, cancelEditingTitle])
 
   const groupConversationsByDate = (conversations: Conversation[]): GroupedConversations => {
     const now = new Date()
@@ -196,7 +196,7 @@ export function Sidebar() {
     ? pathname.split('/conversation/')[1]
     : null
 
-  const renderConversationGroup = (title: string, conversations: Conversation[]) => {
+  const renderConversationGroup = useCallback((title: string, conversations: Conversation[]) => {
     if (conversations.length === 0) return null
 
     return (
@@ -316,7 +316,7 @@ export function Sidebar() {
         </div>
       </div>
     )
-  }
+  }, [currentConversationId, editingId, editingTitle, setEditingTitle, handleTitleKeyPress, saveTitle, startEditingTitle, cancelEditingTitle, handleDeleteConversation])
 
   return (
     <nav className="h-full bg-bg-tertiary border-r border-border-primary flex flex-col shadow-light" aria-label="Conversations">
