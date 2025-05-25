@@ -39,7 +39,8 @@ export default defineConfig({
     
     /* Set test environment variables */
     extraHTTPHeaders: {
-      'x-test-mode': 'true'
+      'x-test-mode': 'true',
+      'x-msw-enabled': 'true'
     },
     
     /* Increase timeout for authentication flows */

@@ -1,62 +1,32 @@
 import { test, expect } from '@playwright/test'
-import { PrismaClient } from '@prisma/client'
 import { signInAsGuest, waitForChatInterfaceReady, waitForInputEnabled, waitForSendButtonEnabled, sendMessage } from '../utils/auth-helpers'
-import { TestCleanup } from '../utils/test-cleanup'
-import { setupMSWInBrowser, resetMSWInBrowser } from '../utils/msw-setup'
+import { dbManager, resetGuestUserData, validateDatabaseState } from '../utils/database-manager'
+import { setupMSWInBrowser } from '../utils/msw-setup'
 
 test.describe('Chat Functionality', () => {
-  let prisma: PrismaClient
-  let testCleanup: TestCleanup
-
-  test.beforeAll(async () => {
-    // Initialize Prisma client for test isolation
-    prisma = new PrismaClient({
-      datasources: {
-        db: {
-          url: process.env.DATABASE_URL
-        }
-      }
-    })
-    
-    // Initialize test cleanup utility
-    testCleanup = new TestCleanup()
-  })
-
-  test.afterAll(async () => {
-    // Disconnect clients
-    await testCleanup.disconnect()
-    await prisma.$disconnect()
-  })
-
   test.beforeEach(async ({ page }) => {
     // Setup MSW in browser for API mocking
     await setupMSWInBrowser(page)
     
-    // Use improved cleanup utility
-    await testCleanup.cleanupGuestUserData()
+    // Clean up guest user data before each test
+    await resetGuestUserData()
     
     // Validate clean state before proceeding
-    await testCleanup.validateCleanState()
-    
-    // Enforce conversation limits to prevent data pollution
-    await testCleanup.enforceConversationLimit(2)
+    await validateDatabaseState()
 
     // Sign in as guest user and ensure chat interface is ready
     await signInAsGuest(page)
     await waitForChatInterfaceReady(page)
     
     // Log current data counts for debugging
-    const counts = await testCleanup.getDataCounts()
-    console.log(`📊 Pre-test data counts:`, counts)
+    const stats = await dbManager().getDatabaseStats()
+    console.log(`📊 Pre-test data counts:`, stats)
   })
 
   test.afterEach(async ({ page }) => {
-    // Reset MSW handlers
-    await resetMSWInBrowser(page)
-    
     // Log final data counts for debugging
-    const counts = await testCleanup.getDataCounts()
-    console.log(`📊 Post-test data counts:`, counts)
+    const stats = await dbManager().getDatabaseStats()
+    console.log(`📊 Post-test data counts:`, stats)
     
     // Clear browser storage and cookies after each test
     await page.context().clearCookies()
@@ -66,7 +36,7 @@ test.describe('Chat Functionality', () => {
     })
     
     // Clean up any conversations created during the test
-    await testCleanup.cleanupGuestUserData()
+    await resetGuestUserData()
   })
 
   test('should send and receive messages', async ({ page }) => {
@@ -119,8 +89,8 @@ test.describe('Chat Functionality', () => {
     // MSW will handle the slow response based on message content
     
     // Type and send a message with "cancel" keyword to trigger slow response
-    await page.getByPlaceholder(/type your message/i).fill('Test cancel message')
-    await page.getByRole('button', { name: /send/i }).click()
+    await page.getByTestId('message-input').fill('Test cancel message')
+    await page.getByTestId('send-button').click()
     
     // Should show streaming indicator
     await expect(page.getByText(/ai is typing/i)).toBeVisible()
@@ -140,7 +110,7 @@ test.describe('Chat Functionality', () => {
   })
 
   test('should handle keyboard shortcuts', async ({ page }) => {
-    const messageInput = page.getByPlaceholder(/type your message/i)
+    const messageInput = page.getByTestId('message-input')
     
     // Test Enter to send
     await messageInput.fill('Test message')
@@ -160,8 +130,8 @@ test.describe('Chat Functionality', () => {
 
   test('should show message timestamps', async ({ page }) => {
     // Send a message first
-    await page.getByPlaceholder(/type your message/i).fill('Test message')
-    await page.getByRole('button', { name: /send/i }).click()
+    await page.getByTestId('message-input').fill('Test message')
+    await page.getByTestId('send-button').click()
     
     // Should show timestamp
     await expect(page.getByText(/just now|ago/)).toBeVisible()
@@ -175,8 +145,8 @@ test.describe('Chat Functionality', () => {
   test('should handle markdown rendering', async ({ page }) => {
     // MSW will handle markdown response based on message content
     
-    await page.getByPlaceholder(/type your message/i).fill('Show me some markdown')
-    await page.getByRole('button', { name: /send/i }).click()
+    await page.getByTestId('message-input').fill('Show me some markdown')
+    await page.getByTestId('send-button').click()
     
     // Should render bold text
     await expect(page.locator('strong').filter({ hasText: 'Bold text' })).toBeVisible()
@@ -191,8 +161,8 @@ test.describe('Chat Functionality', () => {
   test('should handle thinking sections', async ({ page }) => {
     // MSW will handle thinking response based on message content
     
-    await page.getByPlaceholder(/type your message/i).fill('Think about something')
-    await page.getByRole('button', { name: /send/i }).click()
+    await page.getByTestId('message-input').fill('Think about something')
+    await page.getByTestId('send-button').click()
     
     // Should show thinking section toggle
     await expect(page.getByRole('button', { name: /show thinking/i })).toBeVisible()
@@ -207,8 +177,8 @@ test.describe('Chat Functionality', () => {
   test('should handle error states', async ({ page }) => {
     // MSW will handle error response based on message content
     
-    await page.getByPlaceholder(/type your message/i).fill('Test error message')
-    await page.getByRole('button', { name: /send/i }).click()
+    await page.getByTestId('message-input').fill('Test error message')
+    await page.getByTestId('send-button').click()
     
     // Should show error message
     await expect(page.getByText(/error occurred/i)).toBeVisible()
@@ -217,8 +187,8 @@ test.describe('Chat Functionality', () => {
   test('should handle network errors', async ({ page }) => {
     // MSW will handle network error based on message content
     
-    await page.getByPlaceholder(/type your message/i).fill('Test network message')
-    await page.getByRole('button', { name: /send/i }).click()
+    await page.getByTestId('message-input').fill('Test network message')
+    await page.getByTestId('send-button').click()
     
     // Should show network error
     await expect(page.getByText(/network error/i)).toBeVisible()
@@ -265,13 +235,13 @@ test.describe('Chat Functionality', () => {
   })
 
   test('should handle empty messages', async ({ page }) => {
-    const sendButton = page.getByRole('button', { name: /send/i })
+    const sendButton = page.getByTestId('send-button')
     
     // Send button should be disabled when input is empty
     await expect(sendButton).toBeDisabled()
     
     // Type whitespace only
-    await page.getByPlaceholder(/type your message/i).fill('   ')
+    await page.getByTestId('message-input').fill('   ')
     
     // Send button should still be disabled
     await expect(sendButton).toBeDisabled()
@@ -306,15 +276,15 @@ test.describe('Chat Functionality', () => {
 
   test('should be accessible', async ({ page }) => {
     // Check ARIA labels
-    await expect(page.getByLabel(/message input/i)).toBeVisible()
-    await expect(page.getByRole('button', { name: /send message/i })).toBeVisible()
+    await expect(page.getByTestId('message-input')).toBeVisible()
+    await expect(page.getByTestId('send-button')).toBeVisible()
     
     // Check keyboard navigation
     await page.keyboard.press('Tab')
-    await expect(page.getByPlaceholder(/type your message/i)).toBeFocused()
+    await expect(page.getByTestId('message-input')).toBeFocused()
     
     await page.keyboard.press('Tab')
-    await expect(page.getByRole('button', { name: /send/i })).toBeFocused()
+    await expect(page.getByTestId('send-button')).toBeFocused()
     
     // Check screen reader announcements
     await expect(page.getByRole('status')).toBeVisible()

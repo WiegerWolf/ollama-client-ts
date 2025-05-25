@@ -98,6 +98,7 @@ export default function SignIn() {
               onChange={(e) => setEmail(e.target.value)}
               className="mt-1 block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-800 dark:text-white"
               placeholder="Enter your email"
+              data-testid="email-input"
             />
             {errors.email && (
               <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.email}</p>
@@ -118,6 +119,7 @@ export default function SignIn() {
                 onChange={(e) => setPassword(e.target.value)}
                 className="block w-full px-3 py-2 pr-10 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-800 dark:text-white"
                 placeholder="Enter your password"
+                data-testid="password-input"
               />
               <button
                 type="button"
@@ -147,6 +149,7 @@ export default function SignIn() {
               type="submit"
               disabled={isLoading}
               className="w-full"
+              data-testid="signin-button"
             >
               {isLoading ? "Signing in..." : "Sign In"}
             </Button>

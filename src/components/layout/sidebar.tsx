@@ -319,7 +319,7 @@ export function Sidebar() {
   }, [currentConversationId, editingId, editingTitle, setEditingTitle, handleTitleKeyPress, saveTitle, startEditingTitle, cancelEditingTitle, handleDeleteConversation])
 
   return (
-    <nav className="h-full bg-bg-tertiary border-r border-border-primary flex flex-col shadow-light" aria-label="Conversations">
+    <nav className="h-full bg-bg-tertiary border-r border-border-primary flex flex-col shadow-light" aria-label="Conversations" role="navigation">
       {/* Header Section */}
       <div className="p-lg border-b border-border-primary bg-bg-secondary">
         <Button
@@ -343,6 +343,7 @@ export function Sidebar() {
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full pl-10 pr-10 py-sm bg-bg-primary border border-border-primary rounded-lg text-body-medium text-text-primary placeholder-text-tertiary focus:outline-none focus:ring-2 focus:ring-primary-blue focus:border-transparent"
             aria-label="Search conversations"
+            role="searchbox"
             data-testid="search-conversations"
           />
           {searchQuery && (
@@ -398,6 +399,7 @@ export function Sidebar() {
                   onClick={createNewConversation}
                   className="mt-lg"
                   variant="default"
+                  data-testid="start-conversation-button"
                 >
                   Start your first conversation
                 </Button>

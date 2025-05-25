@@ -1,44 +1,17 @@
 import { test, expect } from '@playwright/test'
-import { PrismaClient } from '@prisma/client'
-import { TestCleanup } from '../utils/test-cleanup'
-import { setupMSWInBrowser, resetMSWInBrowser } from '../utils/msw-setup'
+import { dbManager, resetGuestUserData, validateDatabaseState } from '../utils/database-manager'
+import { setupMSWInBrowser } from '../utils/msw-setup'
 
 test.describe('Conversation Management', () => {
-  let prisma: PrismaClient
-  let testCleanup: TestCleanup
-
-  test.beforeAll(async () => {
-    // Initialize Prisma client for test isolation
-    prisma = new PrismaClient({
-      datasources: {
-        db: {
-          url: process.env.DATABASE_URL
-        }
-      }
-    })
-    
-    // Initialize test cleanup utility
-    testCleanup = new TestCleanup()
-  })
-
-  test.afterAll(async () => {
-    // Disconnect clients
-    await testCleanup.disconnect()
-    await prisma.$disconnect()
-  })
-
   test.beforeEach(async ({ page }) => {
     // Setup MSW in browser for API mocking
     await setupMSWInBrowser(page)
     
-    // Use improved cleanup utility
-    await testCleanup.cleanupGuestUserData()
+    // Clean up guest user data before each test
+    await resetGuestUserData()
     
     // Validate clean state before proceeding
-    await testCleanup.validateCleanState()
-    
-    // Enforce conversation limits to prevent data pollution
-    await testCleanup.enforceConversationLimit(1)
+    await validateDatabaseState()
 
     // Sign in as guest user
     await page.goto('/auth/signin')
@@ -56,14 +29,14 @@ test.describe('Conversation Management', () => {
     }
     
     // Log current data counts for debugging
-    const counts = await testCleanup.getDataCounts()
-    console.log(`📊 Pre-test data counts:`, counts)
+    const stats = await dbManager().getDatabaseStats()
+    console.log(`📊 Pre-test data counts:`, stats)
   })
 
   test.afterEach(async ({ page }) => {
     // Log final data counts for debugging
-    const counts = await testCleanup.getDataCounts()
-    console.log(`📊 Post-test data counts:`, counts)
+    const stats = await dbManager().getDatabaseStats()
+    console.log(`📊 Post-test data counts:`, stats)
     
     // Clear browser storage and cookies after each test
     await page.context().clearCookies()
@@ -73,7 +46,7 @@ test.describe('Conversation Management', () => {
     })
     
     // Clean up any conversations created during the test
-    await testCleanup.cleanupGuestUserData()
+    await resetGuestUserData()
   })
 
   test('should create new conversation', async ({ page }) => {
@@ -103,14 +76,14 @@ test.describe('Conversation Management', () => {
     })
 
     // Click new conversation button using specific test ID
-    await page.locator('[data-testid="new-conversation-button"]').click()
+    await page.getByTestId('new-conversation-button').click()
     
     // Should create and navigate to new conversation
     await expect(page).toHaveURL(/\/conversation\/new-conv-id/)
     
     // Should show empty conversation state
-    await expect(page.getByText(/start a new conversation/i)).toBeVisible()
-    await expect(page.getByPlaceholder(/type your message/i)).toBeVisible()
+    await expect(page.getByText(/start typing below to begin/i)).toBeVisible()
+    await expect(page.getByTestId('message-input')).toBeVisible()
   })
 
   test('should list existing conversations', async ({ page }) => {
@@ -144,8 +117,8 @@ test.describe('Conversation Management', () => {
     })
 
     // Should show conversations in sidebar
-    await expect(page.getByText('First Conversation')).toBeVisible()
-    await expect(page.getByText('Second Conversation')).toBeVisible()
+    await expect(page.getByTestId('conversation-conv-1')).toBeVisible()
+    await expect(page.getByTestId('conversation-conv-2')).toBeVisible()
     
     // Should show message counts
     await expect(page.getByText('5 messages')).toBeVisible()
@@ -233,14 +206,14 @@ test.describe('Conversation Management', () => {
     })
 
     // Click on first conversation
-    await page.getByText('First Conversation').click()
+    await page.getByTestId('conversation-conv-1').click()
     
     // Should navigate to first conversation
     await expect(page).toHaveURL(/\/conversation\/conv-1/)
     await expect(page.getByText('Hello from first conversation')).toBeVisible()
     
     // Click on second conversation
-    await page.getByText('Second Conversation').click()
+    await page.getByTestId('conversation-conv-2').click()
     
     // Should navigate to second conversation
     await expect(page).toHaveURL(/\/conversation\/conv-2/)
@@ -278,7 +251,7 @@ test.describe('Conversation Management', () => {
     await page.goto('/conversation/conv-1')
     
     // Click edit title button
-    await page.getByRole('button', { name: /edit title/i }).click()
+    await page.getByTestId('edit-title-conv-1').click()
     
     // Should show title input
     const titleInput = page.locator('input[value="Original Title"]')
@@ -338,6 +311,8 @@ test.describe('Conversation Management', () => {
             id: 'conv-1',
             title: 'JavaScript Tutorial',
             model: 'llama3.2',
+            createdAt: '2024-01-01T00:00:00Z',
+            updatedAt: '2024-01-01T00:00:00Z',
             messages: [
               { content: 'How to use JavaScript arrays?' },
             ],
@@ -347,6 +322,8 @@ test.describe('Conversation Management', () => {
             id: 'conv-2',
             title: 'Python Guide',
             model: 'mistral',
+            createdAt: '2024-01-02T00:00:00Z',
+            updatedAt: '2024-01-02T00:00:00Z',
             messages: [
               { content: 'Python list comprehensions' },
             ],
@@ -356,6 +333,8 @@ test.describe('Conversation Management', () => {
             id: 'conv-3',
             title: 'React Components',
             model: 'llama3.2',
+            createdAt: '2024-01-03T00:00:00Z',
+            updatedAt: '2024-01-03T00:00:00Z',
             messages: [
               { content: 'How to create React components?' },
             ],
@@ -366,21 +345,21 @@ test.describe('Conversation Management', () => {
     })
 
     // Type in search box
-    const searchInput = page.getByPlaceholder(/search conversations/i)
+    const searchInput = page.getByTestId('search-conversations')
     await searchInput.fill('JavaScript')
     
     // Should filter conversations
-    await expect(page.getByText('JavaScript Tutorial')).toBeVisible()
-    await expect(page.getByText('Python Guide')).not.toBeVisible()
-    await expect(page.getByText('React Components')).not.toBeVisible()
+    await expect(page.getByTestId('conversation-conv-1')).toBeVisible()
+    await expect(page.getByTestId('conversation-conv-2')).not.toBeVisible()
+    await expect(page.getByTestId('conversation-conv-3')).not.toBeVisible()
     
     // Clear search
     await searchInput.fill('')
     
     // Should show all conversations again
-    await expect(page.getByText('JavaScript Tutorial')).toBeVisible()
-    await expect(page.getByText('Python Guide')).toBeVisible()
-    await expect(page.getByText('React Components')).toBeVisible()
+    await expect(page.getByTestId('conversation-conv-1')).toBeVisible()
+    await expect(page.getByTestId('conversation-conv-2')).toBeVisible()
+    await expect(page.getByTestId('conversation-conv-3')).toBeVisible()
   })
 
   test('should handle conversation loading states', async ({ page }) => {
@@ -455,7 +434,7 @@ test.describe('Conversation Management', () => {
 
     // Should show empty state
     await expect(page.getByText(/no conversations yet/i)).toBeVisible()
-    await expect(page.getByRole('button', { name: /start your first conversation/i })).toBeVisible()
+    await expect(page.getByTestId('start-conversation-button')).toBeVisible()
   })
 
   test('should be accessible', async ({ page }) => {
@@ -475,8 +454,8 @@ test.describe('Conversation Management', () => {
 
     // Check ARIA labels and roles
     await expect(page.getByRole('navigation', { name: /conversations/i })).toBeVisible()
-    await expect(page.getByRole('button', { name: /new conversation/i })).toBeVisible()
-    await expect(page.getByRole('searchbox', { name: /search conversations/i })).toBeVisible()
+    await expect(page.getByTestId('new-conversation-button')).toBeVisible()
+    await expect(page.getByTestId('search-conversations')).toBeVisible()
     
     // Check keyboard navigation
     await page.keyboard.press('Tab')

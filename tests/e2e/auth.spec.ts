@@ -1,79 +1,17 @@
 import { test, expect } from '@playwright/test'
-import { PrismaClient } from '@prisma/client'
-import { setupMSWInBrowser, resetMSWInBrowser } from '../utils/msw-setup'
+import { dbManager, resetGuestUserData, validateDatabaseState } from '../utils/database-manager'
+import { setupMSWInBrowser } from '../utils/msw-setup'
 
 test.describe('Authentication', () => {
-  let prisma: PrismaClient
-
-  test.beforeAll(async () => {
-    // Initialize Prisma client for test isolation
-    prisma = new PrismaClient({
-      datasources: {
-        db: {
-          url: process.env.DATABASE_URL
-        }
-      }
-    })
-  })
-
-  test.afterAll(async () => {
-    // Disconnect Prisma client
-    await prisma.$disconnect()
-  })
-
   test.beforeEach(async ({ page }) => {
     // Setup MSW in browser for API mocking
     await setupMSWInBrowser(page)
     
-    // Aggressive cleanup - run multiple times to ensure clean state
-    for (let i = 0; i < 3; i++) {
-      try {
-        await prisma.message.deleteMany({
-          where: {
-            conversation: {
-              userId: 'guest-user'
-            }
-          }
-        })
-        
-        await prisma.modelChange.deleteMany({
-          where: {
-            conversation: {
-              userId: 'guest-user'
-            }
-          }
-        })
-        
-        await prisma.conversation.deleteMany({
-          where: {
-            userId: 'guest-user'
-          }
-        })
-        
-        await prisma.session.deleteMany({
-          where: {
-            userId: 'guest-user'
-          }
-        })
-        
-        // Check if cleanup was successful
-        const remainingConversations = await prisma.conversation.count({
-          where: { userId: 'guest-user' }
-        })
-        
-        if (remainingConversations === 0) {
-          console.log(`🧹 Cleaned up guest user data before auth test (attempt ${i + 1})`)
-          break
-        } else {
-          console.log(`⚠️  ${remainingConversations} conversations still remain after cleanup attempt ${i + 1}`)
-          if (i < 2) {
-            await new Promise(resolve => setTimeout(resolve, 500)) // Wait before retry
-          }
-        }
-      } catch (error) {
-        console.warn(`⚠️  Failed to clean up guest user data (attempt ${i + 1}):`, error)
-      }
-    }
+    // Clean up guest user data before each test
+    await resetGuestUserData()
+    
+    // Validate clean state before proceeding
+    await validateDatabaseState()
 
     // Enhanced error logging for authentication debugging
     page.on('console', msg => {
@@ -132,43 +70,30 @@ test.describe('Authentication', () => {
     })
     
     // Clean up any conversations created during the test
-    try {
-      await prisma.message.deleteMany({
-        where: {
-          conversation: {
-            userId: 'guest-user'
-          }
-        }
-      })
-      
-      await prisma.modelChange.deleteMany({
-        where: {
-          conversation: {
-            userId: 'guest-user'
-          }
-        }
-      })
-      
-      await prisma.conversation.deleteMany({
-        where: {
-          userId: 'guest-user'
-        }
-      })
-      
-      await prisma.session.deleteMany({
-        where: {
-          userId: 'guest-user'
-        }
-      })
-      
-      console.log('🧹 Cleaned up guest user data after test')
-    } catch (error) {
-      console.warn('⚠️  Failed to clean up guest user data after test:', error)
-    }
+    await resetGuestUserData()
   })
 
   test('should redirect unauthenticated users to sign in', async ({ page }) => {
     console.log('🧪 Testing unauthenticated redirect...')
+    
+    // Clear any existing session data
+    await page.context().clearCookies()
+    await page.evaluate(() => {
+      localStorage.clear()
+      sessionStorage.clear()
+    })
+    
+    // Override MSW to return unauthenticated response
+    await page.route('/api/auth/session', route => {
+      console.log('🔐 Intercepting auth session request - returning unauthenticated')
+      route.fulfill({
+        status: 200,
+        body: JSON.stringify({})
+      })
+    })
+    
+    // Navigate to home page
+    await page.goto('/', { waitUntil: 'networkidle', timeout: 30000 })
     
     // Should be redirected to sign in page
     await expect(page).toHaveURL(/\/auth\/signin/, { timeout: 15000 })
@@ -201,15 +126,14 @@ test.describe('Authentication', () => {
     
     // Wait for form to be ready with enhanced checks
     console.log('⏳ Waiting for sign in form...')
-    await expect(page.getByLabel(/email/i)).toBeVisible({ timeout: 15000 })
-    await expect(page.getByLabel(/password/i)).toBeVisible({ timeout: 10000 })
-    await expect(page.getByRole('button', { name: /sign in/i })).toBeVisible({ timeout: 10000 })
-    
-    // Fill in guest credentials with verification
-    console.log('📝 Filling in guest credentials...')
     const emailInput = page.getByLabel(/email/i)
     const passwordInput = page.getByLabel(/password/i)
     
+    await expect(emailInput).toBeVisible({ timeout: 15000 })
+    await expect(passwordInput).toBeVisible({ timeout: 10000 })
+    
+    // Fill in guest credentials with verification
+    console.log('📝 Filling in guest credentials...')
     await emailInput.fill('guest@example.com')
     await expect(emailInput).toHaveValue('guest@example.com')
     
@@ -255,12 +179,12 @@ test.describe('Authentication', () => {
     
     // Wait for either "Start your first conversation" or message input to be visible
     await Promise.race([
-      expect(page.getByText(/start your first conversation/i)).toBeVisible({ timeout: 15000 }),
-      expect(page.locator('input[placeholder*="type your message" i], textarea[placeholder*="type your message" i]')).toBeVisible({ timeout: 15000 })
+      expect(page.getByTestId('start-conversation-button')).toBeVisible({ timeout: 15000 }),
+      expect(page.getByTestId('message-input')).toBeVisible({ timeout: 15000 })
     ])
     
     // Verify message input is present and enabled
-    const messageInput = page.locator('input[placeholder*="type your message" i], textarea[placeholder*="type your message" i]')
+    const messageInput = page.getByTestId('message-input')
     await expect(messageInput).toBeVisible({ timeout: 10000 })
     await expect(messageInput).toBeEnabled({ timeout: 5000 })
     
@@ -319,7 +243,7 @@ test.describe('Authentication', () => {
     // Should still be authenticated and on main app
     console.log('🔍 Checking session persistence...')
     await expect(page).toHaveURL('/', { timeout: 15000 })
-    await expect(page.locator('input[placeholder*="type your message" i], textarea[placeholder*="type your message" i]')).toBeVisible({ timeout: 15000 })
+    await expect(page.getByTestId('message-input')).toBeVisible({ timeout: 15000 })
     
     console.log('✅ Session persistence test passed')
   })

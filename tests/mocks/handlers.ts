@@ -4,11 +4,12 @@ import { mockConversations, mockModels, mockUserSettings, mockApiResponses } fro
 export const handlers = [
   // Auth endpoints
   http.get('/api/auth/session', () => {
+    console.log('🔐 MSW: Handling auth session request')
     return HttpResponse.json({
       user: {
-        id: 'test-user-id',
-        email: 'test@example.com',
-        name: 'Test User',
+        id: 'guest-user',
+        email: 'guest@example.com',
+        name: 'Guest User',
       },
       expires: '2024-12-31',
     })
@@ -16,11 +17,13 @@ export const handlers = [
 
   // Conversations endpoints
   http.get('/api/conversations', ({ request }) => {
+    console.log('💬 MSW: Handling conversations GET request')
     const url = new URL(request.url)
     const search = url.searchParams.get('search')
     
     // Handle search functionality
     if (search) {
+      console.log(`🔍 MSW: Searching conversations for: ${search}`)
       const filtered = mockConversations.filter(conv =>
         conv.title.toLowerCase().includes(search.toLowerCase()) ||
         conv.messages.some(msg => msg.content.toLowerCase().includes(search.toLowerCase()))
@@ -29,6 +32,7 @@ export const handlers = [
     }
     
     // Return all conversations by default
+    console.log(`💬 MSW: Returning ${mockConversations.length} conversations`)
     return HttpResponse.json(mockConversations)
   }),
 
@@ -110,6 +114,7 @@ export const handlers = [
 
   // Models endpoint
   http.get('/api/models', () => {
+    console.log('🤖 MSW: Handling models GET request')
     return HttpResponse.json({ models: mockModels })
   }),
 
@@ -131,10 +136,12 @@ export const handlers = [
 
   // Chat endpoint with improved streaming for tests
   http.post('/api/chat', async ({ request }) => {
+    console.log('💬 MSW: Handling chat POST request')
     const body = await request.json() as any
     const { stream = true, messages } = body
     
     if (!messages || messages.length === 0) {
+      console.log('❌ MSW: Chat request missing messages')
       return HttpResponse.json(
         { error: 'Missing required fields' },
         { status: 400 }
@@ -143,6 +150,7 @@ export const handlers = [
     
     // Check for special test scenarios based on message content
     const lastMessage = messages[messages.length - 1]?.content || ''
+    console.log(`💬 MSW: Processing chat message: ${lastMessage.substring(0, 50)}...`)
     
     // Handle markdown test
     if (lastMessage.includes('markdown')) {
@@ -185,21 +193,7 @@ export const handlers = [
     
     if (stream) {
       // Return streaming response optimized for test environment
-      const chunks = [
-        '{"message":{"role":"assistant","content":"Hello"},"done":false}',
-        '{"message":{"role":"assistant","content":" there"},"done":false}',
-        '{"message":{"role":"assistant","content":"!"},"done":false}',
-        '{"message":{"role":"assistant","content":" How"},"done":false}',
-        '{"message":{"role":"assistant","content":" can"},"done":false}',
-        '{"message":{"role":"assistant","content":" I"},"done":false}',
-        '{"message":{"role":"assistant","content":" help"},"done":false}',
-        '{"message":{"role":"assistant","content":" you"},"done":false}',
-        '{"message":{"role":"assistant","content":"?"},"done":false}',
-        '{"done":true}',
-      ]
-      
-      // Return immediate response for Playwright compatibility
-      const responseBody = chunks.join('\n')
+      const responseBody = '{"message":{"role":"assistant","content":"Hello there! How can I help you?"},"done":true}'
       
       return new HttpResponse(responseBody, {
         headers: {

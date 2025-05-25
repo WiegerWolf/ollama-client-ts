@@ -10,12 +10,12 @@ export async function signInAsGuest(page: Page, retries = 3): Promise<void> {
     try {
       await page.goto('/auth/signin', { waitUntil: 'networkidle', timeout: 30000 })
       
-      // Wait for form elements to be ready
-      await expect(page.getByLabel(/email/i)).toBeVisible({ timeout: 10000 })
-      await expect(page.getByLabel(/password/i)).toBeVisible({ timeout: 10000 })
-      
+      // Wait for form elements to be ready - use flexible selectors
       const emailInput = page.getByLabel(/email/i)
       const passwordInput = page.getByLabel(/password/i)
+      
+      await expect(emailInput).toBeVisible({ timeout: 10000 })
+      await expect(passwordInput).toBeVisible({ timeout: 10000 })
       
       await emailInput.fill('guest@example.com')
       await expect(emailInput).toHaveValue('guest@example.com')
